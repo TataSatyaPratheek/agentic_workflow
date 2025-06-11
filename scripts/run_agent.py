@@ -68,7 +68,7 @@ def run_training():
         .training(
             gamma=0.99,
             lr=5e-5,
-            train_batch_size_per_learner=256, # Renamed for clarity in new API
+            train_batch_size_per_learner=128, # Renamed for clarity in new API
             # sgd_minibatch_size and num_sgd_iter are PPO-specific and might not be
             # accepted by .training() in all Ray versions. They will be set directly below.
             entropy_coeff=0.01,
@@ -89,7 +89,7 @@ def run_training():
 
     
     # Use .build_algo() as .build() is deprecated
-    algo = config.build()
+    algo = config.build_algo()
     
     # Checkpoints will be saved in a subdirectory, e.g., .../rllib_snake_model_checkpoints/checkpoint
     checkpoint_save_restore_path = os.path.join(main_model_artifacts_path, "checkpoint")
