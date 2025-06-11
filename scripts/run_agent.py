@@ -2,6 +2,7 @@
 import sys, os
 import pygame
 import ray
+import torch
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.tune.registry import register_env
 
@@ -13,40 +14,30 @@ from src.io.tts import TTS
 from src.io.asr import ASR
 from src.config import *
 
-# RLlib specific: Environment Creator Function
 def env_creator(env_config):
     return SnakeEnv(**env_config)
 
 def run_training():
-    # RLlib specific: Initialize Ray
     ray.init(ignore_reinit_error=True)
     print("Ray initialized.")
 
-    # RLlib specific: Register the custom environment
     register_env("SnakeEnv-v1", env_creator)
 
-    # Initialize our helper modules
     parser = LLMCommandParser()
     tts = TTS()
     asr = ASR()
 
-    # --- RLlib specific: Configure the PPO Algorithm ---
     config = (
         PPOConfig()
-        .environment(
-            env="SnakeEnv-v1",
-            env_config={"render_mode": "human"}
-        )
-        # --- FIXED: Use the new .env_runners() API instead of .rollouts() ---
+        .environment(env="SnakeEnv-v1", env_config={"render_mode": "human"})
         .env_runners(num_env_runners=0)
         .framework("torch")
         .training(model={"fcnet_hiddens": [256, 256]})
     )
     
-    # RLlib specific: Build the Algorithm object
-    algo = config.build()
+    algo = config.build_algo()
+    module = algo.get_module()
 
-    # Load Checkpoint if it exists
     checkpoint_dir = os.path.join(MODEL_PATH, "checkpoint")
     if os.path.exists(checkpoint_dir):
         try:
@@ -59,7 +50,6 @@ def run_training():
 
     tts.speak("Agent online. Press V for voice command.")
 
-    # Manual Interaction and Training Loop
     env = SnakeEnv(render_mode='human')
     score, last_level = 0, 1
     agent_status, input_text, input_active = "Self-Playing", "", False
@@ -104,7 +94,15 @@ def run_training():
                         else:
                             tts.speak("Could not hear you.")
             
-            action = algo.compute_single_action(obs)
+            obs_tensor = torch.from_numpy(obs).unsqueeze(0)
+            fwd_out = module.forward_inference({"obs": obs_tensor})
+            
+            # --- FIXED: Get action from the distribution logits ---
+            # The 'action_dist_inputs' key holds the logits.
+            # We take the argmax to get the most likely action for inference.
+            action_logits = fwd_out['action_dist_inputs']
+            action = torch.argmax(action_logits, dim=1).squeeze().item()
+            # --- END OF FIX ---
 
             agent_dir = env.game.direction.lower()
             reward_modifier = 0
@@ -127,7 +125,6 @@ def run_training():
 
         print("Episode finished. Training...")
         train_results = algo.train()
-        print(f"Train results: {train_results['info']['learner']['default_policy']['learner_stats']}")
 
         tts.speak(f"Game over! Score was {score}. Resetting.")
         score, last_level = 0, 1

@@ -1,26 +1,38 @@
 # src/agent/llm_parser.py
+import torch
 from transformers import pipeline
-from src.config import AGENT_ACTIONS, LLM_CLASSIFIER
 
 class LLMCommandParser:
-    """Uses a zero-shot pipeline to classify user commands into game actions."""
+    """Uses a zero-shot classification model to parse natural language commands."""
     def __init__(self):
-        # --- REVISED LINE ---
-        # Load the model directly using the identifier from config.
+        # --- THE M1 FIX ---
+        # Check if MPS (Apple Silicon GPU) is available and use it.
+        # Fallback to CPU if not. This makes the code portable.
+        if torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+            print("LLMCommandParser: MPS device found, using Apple Silicon GPU.")
+        else:
+            self.device = torch.device("cpu")
+            print("LLMCommandParser: MPS not found, using CPU.")
+        # --- END OF FIX ---
+
+        # Pass the selected device to the pipeline.
+        # The model will be automatically moved to the GPU.
         self.classifier = pipeline(
             "zero-shot-classification",
-            model=LLM_CLASSIFIER,
-            device="cpu"
+            model="facebook/bart-large-mnli",
+            device=self.device
         )
-        # --- END REVISED LINE ---
+        self.candidate_labels = ['up', 'down', 'left', 'right']
         print("LLM Command Parser initialized.")
 
-    def parse_command(self, text: str) -> str:
+    def parse_command(self, command: str) -> str:
         """
-        Parses the user's text command to determine the most likely action.
-        Returns one of the actions from the global AGENT_ACTIONS list.
+        Parses the text command and returns the most likely direction.
         """
-        if not text:
+        if not command:
             return "idle"
-        result = self.classifier(text, candidate_labels=AGENT_ACTIONS)
+            
+        result = self.classifier(command, self.candidate_labels)
+        # The highest score is the most likely command
         return result['labels'][0]
