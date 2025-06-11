@@ -6,11 +6,14 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.tune.registry import register_env
 import time
+import gymnasium as gym
+
+import src
+from src.config import MODEL_PATH as MODEL_BASE_DIR_NAME
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.game.snake_env import SnakeEnv
-from src.config import MODEL_PATH as MODEL_BASE_DIR_NAME # Renamed for clarity
 
 def env_creator(env_config: dict):
     return SnakeEnv(config=env_config)
