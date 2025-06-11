@@ -25,7 +25,10 @@ def run_interactive_training():
     n_steps = 512
     if os.path.exists(MODEL_PATH):
         print(f"Loading existing model from {MODEL_PATH}")
-        model = PPO.load(MODEL_PATH, env=env, n_steps=n_steps)
+        # Allow the loaded model to use its saved n_steps.
+        # The n_steps parameter in PPO.load can sometimes cause issues
+        # if it mismatches the saved model's n_steps, especially in older SB3 versions.
+        model = PPO.load(MODEL_PATH, env=env)
     else:
         print("Creating new PPO model.")
         model = PPO("MlpPolicy", env, verbose=0, n_steps=n_steps)
@@ -39,7 +42,7 @@ def run_interactive_training():
     agent_status = "Self-Playing"
     running = True
 
-    tts.speak("Agent is online. Use keyboard L, R, S to distract me.")
+    tts.speak("Agent is online. Use Arrow Keys (Up, Left, Right) to distract me.")
     
     # --- The Stable Game Loop ---
     while running:
@@ -49,9 +52,9 @@ def run_interactive_training():
             if event.type == pygame.QUIT:
                 running = False
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_l: distraction_command = "left"
-                elif event.key == pygame.K_r: distraction_command = "right"
-                elif event.key == pygame.K_s: distraction_command = "straight"
+                if event.key == pygame.K_LEFT: distraction_command = "left"
+                elif event.key == pygame.K_RIGHT: distraction_command = "right"
+                elif event.key == pygame.K_UP: distraction_command = "straight"
                 
                 if distraction_command != "idle":
                     agent_status = f"Distracted: {distraction_command}"

@@ -23,15 +23,29 @@ class SnakeEnv(gym.Env):
         point_l, point_r, point_u, point_d = Point(head.x-BLOCK_SIZE, head.y), Point(head.x+BLOCK_SIZE, head.y), Point(head.x, head.y-BLOCK_SIZE), Point(head.x, head.y+BLOCK_SIZE)
         dir_l, dir_r, dir_u, dir_d = self.game.direction == 1, self.game.direction == 0, self.game.direction == 2, self.game.direction == 3
 
-        game_state = [
+        # Collision states (danger straight, right, left) and current direction
+        collision_dir_state = [
             (dir_r and self.game.is_collision(point_r)) or (dir_l and self.game.is_collision(point_l)) or (dir_u and self.game.is_collision(point_u)) or (dir_d and self.game.is_collision(point_d)),
             (dir_u and self.game.is_collision(point_r)) or (dir_d and self.game.is_collision(point_l)) or (dir_l and self.game.is_collision(point_u)) or (dir_r and self.game.is_collision(point_d)),
             (dir_d and self.game.is_collision(point_r)) or (dir_u and self.game.is_collision(point_l)) or (dir_r and self.game.is_collision(point_u)) or (dir_l and self.game.is_collision(point_d)),
-            dir_l, dir_r, dir_u, dir_d,
-            self.game.food.x < self.game.head.x, self.game.food.x > self.game.head.x,
-            self.game.food.y < self.game.head.y, self.game.food.y > self.game.head.y
+            dir_l, dir_r, dir_u, dir_d
         ]
         
+        # Food observation - relative to nearest food
+        food_obs = [False, False, False, False] # Default: no food perceived / food far
+        if self.game.foods: # Check if there's any food
+            try:
+                nearest_food = min(self.game.foods, key=lambda f: np.linalg.norm(np.array([f.x, f.y]) - np.array([head.x, head.y])))
+                food_obs = [
+                    nearest_food.x < head.x,  # Food left
+                    nearest_food.x > head.x,  # Food right
+                    nearest_food.y < head.y,  # Food up
+                    nearest_food.y > head.y   # Food down
+                ]
+            except ValueError: # Should not happen if self.game.foods is not empty, but as a safeguard
+                pass 
+        
+        game_state = collision_dir_state + food_obs
         voice_state = [0] * 3
         if voice_command_idx != -1: voice_state[voice_command_idx] = 1
         return np.array(game_state + voice_state, dtype=np.float32)

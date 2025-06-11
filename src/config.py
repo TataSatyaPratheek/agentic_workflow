@@ -5,9 +5,9 @@ GAME_WINDOW_TITLE = "Dynamic Snake RL"
 BASE_SPEED = 20
 SPEED_INCREMENT = 5         # How much speed increases per level
 LEVEL_UP_SCORE = 5          # Score needed to advance to the next level
-MAZE_DENSITY_INCREMENT = 0.02 # How much denser the maze gets per level
-FOOD_MOVE_THRESHOLD = 3     # The level at which food starts moving
-FOOD_MOVE_INTERVAL = 50     # Food moves every 50 frames
+MAZE_DENSITY_INCREMENT = 0.02 # How much denser the maze gets per level (can be kept or removed if direct obstacle count is preferred)
+MAX_OBSTACLES = 10          # Maximum number of obstacles in the maze
+NUM_FOOD_ITEMS = 3          # Number of food items on screen at a time
 
 # --- Core RL & AI Settings ---
 ACTIONS = ["straight", "right", "left"]

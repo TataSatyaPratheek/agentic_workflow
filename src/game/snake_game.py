@@ -25,60 +25,73 @@ class SnakeGame:
         self.direction = 3 # Start moving down
         self.head = Point(self.w/2, self.h/2)
         self.snake = [self.head, Point(self.head.x, self.head.y-BLOCK_SIZE)]
-        self.score = 0
-        self.food = None
-        self.food_move_timer = 0
+        self.score = 0        
+        self.foods = [] # Changed from self.food to self.foods (a list)
         self._generate_maze()
-        self._place_food()
+        self._place_initial_foods() # New method to place multiple food items
         if self.is_collision(): self.reset() # Ensure initial state is not game over
         self.frame_iteration = 0
 
     def _generate_maze(self):
-        """Generates a random maze using a simple randomized algorithm."""
+        """Generates a random maze. Obstacles increase with level, capped by MAX_OBSTACLES."""
         self.obstacles = []
-        density = min(0.3, self.level * MAZE_DENSITY_INCREMENT) # Cap density at 30%
-        for x in range(0, self.w, BLOCK_SIZE):
-            for y in range(0, self.h, BLOCK_SIZE):
-                if random.random() < density:
-                    # Avoid creating obstacles near the center spawn point
-                    if np.linalg.norm(np.array([x, y]) - np.array([self.w/2, self.h/2])) > BLOCK_SIZE * 5:
-                        self.obstacles.append(Point(x, y))
+        
+        # Number of obstacles increases with level, e.g., level 1 = 0, level 2 = 1, ..., up to MAX_OBSTACLES
+        num_obstacles_to_place = min(MAX_OBSTACLES, (self.level - 1))
+
+        potential_obstacle_points = []
+        for x_coord in range(0, self.w, BLOCK_SIZE):
+            for y_coord in range(0, self.h, BLOCK_SIZE):
+                # Avoid center spawn area and snake's initial position
+                if np.linalg.norm(np.array([x_coord, y_coord]) - np.array([self.w/2, self.h/2])) > BLOCK_SIZE * 3:
+                    if Point(x_coord, y_coord) not in self.snake: # Check against current snake state during reset
+                         potential_obstacle_points.append(Point(x_coord, y_coord))
+        
+        if potential_obstacle_points and num_obstacles_to_place > 0:
+            num_to_actually_place = min(num_obstacles_to_place, len(potential_obstacle_points))
+            self.obstacles = random.sample(potential_obstacle_points, num_to_actually_place)
 
     def _is_path_available(self, start, end):
         """Checks if a path exists from start to end using Breadth-First Search (BFS)."""
         q = deque([start])
         visited = {start}
         while q:
-            current = q.popleft()
-            if current == end:
+            current_node = q.popleft()
+            if current_node == end:
                 return True
             for dx, dy in [(0, BLOCK_SIZE), (0, -BLOCK_SIZE), (BLOCK_SIZE, 0), (-BLOCK_SIZE, 0)]:
-                neighbor = Point(current.x + dx, current.y + dy)
+                neighbor = Point(current_node.x + dx, current_node.y + dy)
                 if 0 <= neighbor.x < self.w and 0 <= neighbor.y < self.h and \
                    neighbor not in visited and \
-                   not self.is_collision(neighbor):
+                   not self.is_collision(neighbor) and \
+                   neighbor not in self.obstacles: # BFS should consider obstacles
                     visited.add(neighbor)
                     q.append(neighbor)
         return False
 
-    def _place_food(self):
-        """Places food in a random location that is reachable by the snake."""
-        while True:
+    def _place_initial_foods(self):
+        """Places the initial set of food items."""
+        self.foods = []
+        for _ in range(NUM_FOOD_ITEMS):
+            self._add_new_food()
+
+    def _add_new_food(self):
+        """Adds a single new food item to a random, reachable, and valid location."""
+        if len(self.foods) >= NUM_FOOD_ITEMS:
+            return # Max food items reached
+
+        max_attempts = (self.w // BLOCK_SIZE) * (self.h // BLOCK_SIZE)
+        for _ in range(max_attempts):
             x = random.randint(0, (self.w - BLOCK_SIZE) // BLOCK_SIZE) * BLOCK_SIZE
             y = random.randint(0, (self.h - BLOCK_SIZE) // BLOCK_SIZE) * BLOCK_SIZE
-            self.food = Point(x, y)
-            if self.food not in self.snake and self.food not in self.obstacles:
-                # IMPORTANT: Ensure the food is reachable
-                if self._is_path_available(self.head, self.food):
-                    break
-    
-    def _move_food(self):
-        """Moves the food to a new random valid position."""
-        if self.level >= FOOD_MOVE_THRESHOLD:
-            self.food_move_timer += 1
-            if self.food_move_timer >= FOOD_MOVE_INTERVAL:
-                self.food_move_timer = 0
-                self._place_food()
+            candidate_food = Point(x, y)
+            if candidate_food not in self.snake and \
+               candidate_food not in self.obstacles and \
+               candidate_food not in self.foods: # Check against other food items
+                if self._is_path_available(self.head, candidate_food):
+                    self.foods.append(candidate_food)
+                    return
+        print("Warning: Could not place a new reachable food item after max attempts.")
 
     def play_step(self, action):
         self.frame_iteration += 1
@@ -87,7 +100,6 @@ class SnakeGame:
         
         self._move(action)
         self.snake.insert(0, self.head)
-        self._move_food() # Check if food should move this frame
         
         reward = 0
         game_over = False
@@ -95,18 +107,24 @@ class SnakeGame:
             game_over = True
             reward = REWARD_DEATH
             return reward, game_over, self.score
+        
+        food_eaten = False
+        for food_item in list(self.foods): # Iterate over a copy for safe removal
+            if self.head == food_item:
+                self.score += 1
+                reward = REWARD_FOOD
+                self.foods.remove(food_item)
+                self._add_new_food() # Replenish food
+                food_eaten = True
 
-        if self.head == self.food:
-            self.score += 1
-            reward = REWARD_FOOD
-            self._place_food()
-            # Level Up Logic
-            if self.score % LEVEL_UP_SCORE == 0:
-                self.level += 1
-                self.speed += SPEED_INCREMENT
-                self._generate_maze() # Generate a new, harder maze
-                # TTS should announce this in the main loop
-        else:
+                # Level Up Logic
+                if self.score > 0 and self.score % LEVEL_UP_SCORE == 0: # Ensure level up only on score multiples
+                    self.level += 1
+                    self.speed += SPEED_INCREMENT
+                    self._generate_maze() # Generate a new, harder maze
+                break # Eat one food per step
+        
+        if not food_eaten:
             self.snake.pop()
         
         # self._update_ui() # Rendering will be handled by the agent script
@@ -143,7 +161,19 @@ class SnakeGame:
         elif self.direction == 1: x -= BLOCK_SIZE
         elif self.direction == 2: y -= BLOCK_SIZE
         elif self.direction == 3: y += BLOCK_SIZE
-        self.head = Point(x, y)
+
+        # Screen wrapping logic
+        if x < 0:
+            x = self.w - BLOCK_SIZE  # Wrap to right edge
+        elif x >= self.w:
+            x = 0  # Wrap to left edge
+        
+        if y < 0:
+            y = self.h - BLOCK_SIZE  # Wrap to bottom edge
+        elif y >= self.h:
+            y = 0  # Wrap to top edge
+            
+        self.head = Point(x,y)
 
     def _draw_stats(self, text, x, y):
         """Helper to draw text on the screen."""
@@ -156,9 +186,10 @@ class SnakeGame:
         self.display.fill((0,0,0))
         for pt in self.snake:
             pygame.draw.rect(self.display, (0, 200, 50), pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE))
-        pygame.draw.rect(self.display, (200,0,0), pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE, BLOCK_SIZE))
         for obs in self.obstacles:
             pygame.draw.rect(self.display, (100, 100, 100), pygame.Rect(obs.x, obs.y, BLOCK_SIZE, BLOCK_SIZE))
+        for food_item in self.foods: # Draw all food items
+            pygame.draw.rect(self.display, (200,0,0), pygame.Rect(food_item.x, food_item.y, BLOCK_SIZE, BLOCK_SIZE))
 
         self._draw_stats(f"Score: {score}", 10, 10)
         self._draw_stats(f"Last Reward: {reward:.2f}", 10, 30)
