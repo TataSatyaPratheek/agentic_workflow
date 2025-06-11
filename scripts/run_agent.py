@@ -20,16 +20,16 @@ def run_interactive_training():
     else:
         print("Creating new PPO model."); model = PPO("MlpPolicy", env, verbose=0)
 
-    tts.speak("Agent is online. Starting training.")
+    tts.speak("Agent is online. Starting dynamic training.")
     obs = env.reset()
-    total_reward, episode_steps = 0, 0
+    total_reward, episode_steps, last_level = 0, 0, 1
     
     try:
         while True:
             episode_steps += 1
             user_input = input("Enter a command to distract (or press Enter): ")
             parsed_action_str = parser.parse_command(user_input) if user_input else "idle"
-            
+
             action, _ = model.predict(obs, deterministic=False)
             
             voice_cmd_idx = ACTIONS.index(parsed_action_str) if parsed_action_str != "idle" else -1
@@ -37,7 +37,7 @@ def run_interactive_training():
             # We need to manually call the env's step method to pass the voice command
             # This is a small hack to inject voice command into the next observation
             next_obs, reward, done, info = env.envs[0].step(action[0], voice_command_idx=voice_cmd_idx)
-            
+
             final_reward = reward
             if parsed_action_str != "idle" and ACTIONS[action[0]] == parsed_action_str:
                 final_reward += DISTRACTION_PENALTY
@@ -49,13 +49,20 @@ def run_interactive_training():
             if episode_steps % model.n_steps == 0:
                 model.train()
 
+            # --- NEW: Announce Dynamic Events ---
+            current_level = env.envs[0].game.level
+            if current_level > last_level:
+                tts.speak(f"Level {current_level} reached! The maze is changing and I am getting faster.")
+                last_level = current_level
+            
             obs = np.array([next_obs])
             
             if done:
                 score = info[0]['score']
-                tts.speak(f"Game over! Score: {score}. Resetting.")
+                tts.speak(f"Game over! Final score: {score}. Resetting the world.")
                 obs = env.reset()
                 total_reward, episode_steps = 0, 0
+                last_level = 1
 
     except KeyboardInterrupt:
         print("\nTraining interrupted.")

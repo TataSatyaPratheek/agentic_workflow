@@ -2,46 +2,81 @@
 import pygame
 import random
 import numpy as np
-from collections import namedtuple
-from src.config import REWARD_FOOD, REWARD_DEATH # Import rewards
+from collections import namedtuple, deque
+from src.config import * # Import all new settings
 
 pygame.init()
-
 Point = namedtuple('Point', 'x, y')
 BLOCK_SIZE = 20
-SPEED = 40 # Increase speed for more challenging gameplay
 
 class SnakeGame:
     def __init__(self, w=640, h=480):
-        self.w = w
-        self.h = h
+        self.w, self.h = w, h
         self.display = pygame.display.set_mode((self.w, self.h))
-        pygame.display.set_caption('Snake RL')
+        pygame.display.set_caption(GAME_WINDOW_TITLE)
         self.clock = pygame.time.Clock()
-        self.obstacles = []
-        self._place_obstacles()
         self.reset()
 
-    def _place_obstacles(self):
-        for i in range(5, 15): self.obstacles.append(Point(i * BLOCK_SIZE, 10 * BLOCK_SIZE))
-        for i in range(20, 30): self.obstacles.append(Point(i * BLOCK_SIZE, 15 * BLOCK_SIZE))
-
     def reset(self):
-        self.direction = 3 # 0:Right, 1:Left, 2:Up, 3:Down
+        self.level = 1
+        self.speed = BASE_SPEED
+        self.direction = 3 # Start moving down
         self.head = Point(self.w/2, self.h/2)
         self.snake = [self.head, Point(self.head.x, self.head.y-BLOCK_SIZE)]
         self.score = 0
         self.food = None
+        self.food_move_timer = 0
+        self._generate_maze()
         self._place_food()
         if self.is_collision(): self.reset() # Ensure initial state is not game over
         self.frame_iteration = 0
 
+    def _generate_maze(self):
+        """Generates a random maze using a simple randomized algorithm."""
+        self.obstacles = []
+        density = min(0.3, self.level * MAZE_DENSITY_INCREMENT) # Cap density at 30%
+        for x in range(0, self.w, BLOCK_SIZE):
+            for y in range(0, self.h, BLOCK_SIZE):
+                if random.random() < density:
+                    # Avoid creating obstacles near the center spawn point
+                    if np.linalg.norm(np.array([x, y]) - np.array([self.w/2, self.h/2])) > BLOCK_SIZE * 5:
+                        self.obstacles.append(Point(x, y))
+
+    def _is_path_available(self, start, end):
+        """Checks if a path exists from start to end using Breadth-First Search (BFS)."""
+        q = deque([start])
+        visited = {start}
+        while q:
+            current = q.popleft()
+            if current == end:
+                return True
+            for dx, dy in [(0, BLOCK_SIZE), (0, -BLOCK_SIZE), (BLOCK_SIZE, 0), (-BLOCK_SIZE, 0)]:
+                neighbor = Point(current.x + dx, current.y + dy)
+                if 0 <= neighbor.x < self.w and 0 <= neighbor.y < self.h and \
+                   neighbor not in visited and \
+                   not self.is_collision(neighbor):
+                    visited.add(neighbor)
+                    q.append(neighbor)
+        return False
+
     def _place_food(self):
-        x = random.randint(0, (self.w-BLOCK_SIZE)//BLOCK_SIZE) * BLOCK_SIZE
-        y = random.randint(0, (self.h-BLOCK_SIZE)//BLOCK_SIZE) * BLOCK_SIZE
-        self.food = Point(x, y)
-        if self.food in self.snake or self.food in self.obstacles:
-            self._place_food()
+        """Places food in a random location that is reachable by the snake."""
+        while True:
+            x = random.randint(0, (self.w - BLOCK_SIZE) // BLOCK_SIZE) * BLOCK_SIZE
+            y = random.randint(0, (self.h - BLOCK_SIZE) // BLOCK_SIZE) * BLOCK_SIZE
+            self.food = Point(x, y)
+            if self.food not in self.snake and self.food not in self.obstacles:
+                # IMPORTANT: Ensure the food is reachable
+                if self._is_path_available(self.head, self.food):
+                    break
+    
+    def _move_food(self):
+        """Moves the food to a new random valid position."""
+        if self.level >= FOOD_MOVE_THRESHOLD:
+            self.food_move_timer += 1
+            if self.food_move_timer >= FOOD_MOVE_INTERVAL:
+                self.food_move_timer = 0
+                self._place_food()
 
     def play_step(self, action):
         self.frame_iteration += 1
@@ -50,6 +85,7 @@ class SnakeGame:
         
         self._move(action)
         self.snake.insert(0, self.head)
+        self._move_food() # Check if food should move this frame
         
         reward = 0
         game_over = False
@@ -62,12 +98,19 @@ class SnakeGame:
             self.score += 1
             reward = REWARD_FOOD
             self._place_food()
+            # Level Up Logic
+            if self.score % LEVEL_UP_SCORE == 0:
+                self.level += 1
+                self.speed += SPEED_INCREMENT
+                self._generate_maze() # Generate a new, harder maze
+                # TTS should announce this in the main loop
         else:
             self.snake.pop()
         
         self._update_ui()
-        self.clock.tick(SPEED)
+        self.clock.tick(self.speed)
         return reward, game_over, self.score
+
 
     def is_collision(self, pt=None):
         if pt is None: pt = self.head

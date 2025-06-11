@@ -1,21 +1,26 @@
 # src/config.py
 
-# --- Snake Game Settings ---
-GAME_WINDOW_TITLE = "Snake RL"
-# Actions: 0 = Straight, 1 = Right Turn, 2 = Left Turn
+# --- Dynamic Game Settings ---
+GAME_WINDOW_TITLE = "Dynamic Snake RL"
+BASE_SPEED = 20
+SPEED_INCREMENT = 5         # How much speed increases per level
+LEVEL_UP_SCORE = 5          # Score needed to advance to the next level
+MAZE_DENSITY_INCREMENT = 0.02 # How much denser the maze gets per level
+FOOD_MOVE_THRESHOLD = 3     # The level at which food starts moving
+FOOD_MOVE_INTERVAL = 50     # Food moves every 50 frames
+
+# --- Core RL & AI Settings ---
 ACTIONS = ["straight", "right", "left"]
-# Observation space size (11 for game state + 3 for voice command)
 OBS_SPACE_SIZE = 14
+MODEL_PATH = "dynamic_snake_ppo_agent.zip"
 
-# --- RL & Reward Settings ---
-MODEL_PATH = "snake_ppo_agent.zip"
-REWARD_FOOD = 20.0       # Large reward for eating food
-REWARD_DEATH = -20.0     # Large penalty for dying
-REWARD_CLOSER = 0.1      # Small reward for moving closer to food
-REWARD_FARTHER = -0.2    # Small penalty for moving farther away
-DISTRACTION_PENALTY = -1.0 # Penalty for obeying a distracting command
+# Rewards & Penalties
+REWARD_FOOD = 25.0
+REWARD_DEATH = -25.0
+REWARD_CLOSER = 0.2
+REWARD_FARTHER = -0.3
+DISTRACTION_PENALTY = -2.0
 
-# --- AI Model Settings ---
+# AI Model Settings
 ASR_MODEL = "tiny.en"
-# This is a lightweight, working classifier for our task.
 LLM_CLASSIFIER = "Recognai/zeroshot_selectra_small"
