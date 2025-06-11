@@ -8,12 +8,14 @@ from src.config import * # Import all new settings
 pygame.init()
 Point = namedtuple('Point', 'x, y')
 BLOCK_SIZE = 20
+TEXT_COLOR = (255, 255, 255)
 
 class SnakeGame:
     def __init__(self, w=640, h=480):
         self.w, self.h = w, h
         self.display = pygame.display.set_mode((self.w, self.h))
         pygame.display.set_caption(GAME_WINDOW_TITLE)
+        self.font = pygame.font.SysFont('arial', 25)
         self.clock = pygame.time.Clock()
         self.reset()
 
@@ -107,7 +109,7 @@ class SnakeGame:
         else:
             self.snake.pop()
         
-        self._update_ui()
+        # self._update_ui() # Rendering will be handled by the agent script
         self.clock.tick(self.speed)
         return reward, game_over, self.score
 
@@ -118,13 +120,6 @@ class SnakeGame:
         if pt in self.snake[1:]: return True
         if pt in self.obstacles: return True
         return False
-
-    def _update_ui(self):
-        self.display.fill((0,0,0))
-        for pt in self.snake: pygame.draw.rect(self.display, (0, 200, 50), pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE))
-        pygame.draw.rect(self.display, (200,0,0), pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE, BLOCK_SIZE))
-        for obs in self.obstacles: pygame.draw.rect(self.display, (100, 100, 100), pygame.Rect(obs.x, obs.y, BLOCK_SIZE, BLOCK_SIZE))
-        pygame.display.flip()
 
     def _move(self, action):
         # --- REVISED TURNING LOGIC ---
@@ -149,3 +144,24 @@ class SnakeGame:
         elif self.direction == 2: y -= BLOCK_SIZE
         elif self.direction == 3: y += BLOCK_SIZE
         self.head = Point(x, y)
+
+    def _draw_stats(self, text, x, y):
+        """Helper to draw text on the screen."""
+        font = pygame.font.Font(pygame.font.get_default_font(), 20)
+        text_surface = font.render(text, True, (255, 255, 255)) # White text
+        self.display.blit(text_surface, (x, y))
+
+    def _update_ui(self, score=0, reward=0.0, status="Starting..."):
+        """Updated to include drawing live stats."""
+        self.display.fill((0,0,0))
+        for pt in self.snake:
+            pygame.draw.rect(self.display, (0, 200, 50), pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE))
+        pygame.draw.rect(self.display, (200,0,0), pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE, BLOCK_SIZE))
+        for obs in self.obstacles:
+            pygame.draw.rect(self.display, (100, 100, 100), pygame.Rect(obs.x, obs.y, BLOCK_SIZE, BLOCK_SIZE))
+
+        self._draw_stats(f"Score: {score}", 10, 10)
+        self._draw_stats(f"Last Reward: {reward:.2f}", 10, 30)
+        self._draw_stats(f"Status: {status}", 10, 50)
+        
+        pygame.display.flip()

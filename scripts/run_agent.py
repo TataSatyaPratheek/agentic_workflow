@@ -1,6 +1,7 @@
 # scripts/run_agent.py
 import sys, os, time
 import numpy as np
+import pygame
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.game.snake_env import SnakeEnv
@@ -8,68 +9,85 @@ from src.agent.llm_parser import LLMCommandParser
 from src.io.tts import TTS
 from src.config import *
 from stable_baselines3 import PPO
-from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.callbacks import BaseCallback
 
-def run_interactive_training():
-    env = make_vec_env(lambda: SnakeEnv(render_mode='human'), n_envs=1)
+class InteractiveCallback(BaseCallback):
+    """
+    A custom callback to handle user input and UI updates during training.
+    """
+    def __init__(self, tts: TTS, parser: LLMCommandParser, verbose=0):
+        super(InteractiveCallback, self).__init__(verbose)
+        self.tts = tts
+        self.parser = parser
+        self.score = 0
+        self.last_reward = 0.0
+        self.agent_status = "Self-Playing"
+
+    def _on_step(self) -> bool:
+        # Handle Pygame events for non-blocking input
+        distraction_command = "idle"
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False # Stops training
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_l: distraction_command = "left"
+                elif event.key == pygame.K_r: distraction_command = "right"
+                elif event.key == pygame.K_s: distraction_command = "straight"
+        
+        # Update the environment with the latest voice command
+        env = self.training_env.envs[0]
+        parsed_action_str = self.parser.parse_command(distraction_command)
+        env.last_voice_command_idx = ACTIONS.index(parsed_action_str) if parsed_action_str != "idle" else -1
+
+        # Check for distraction and apply penalty
+        # The `self.locals` dict gives us access to internal RL variables
+        last_action = self.locals['actions'][0]
+        if parsed_action_str != "idle" and ACTIONS[last_action] == parsed_action_str:
+            self.locals['rewards'][0] += DISTRACTION_PENALTY
+            self.agent_status = f"Distracted! Obeyed {parsed_action_str}"
+            self.tts.speak(self.agent_status)
+        else:
+            self.agent_status = "Self-Playing"
+
+        self.last_reward = self.locals['rewards'][0]
+        self.score = self.locals['infos'][0].get('score', self.score)
+        
+        # Render the game with live stats
+        env.render(self.score, self.last_reward, self.agent_status)
+        
+        if self.locals['dones'][0]:
+            self.tts.speak(f"Game over! Score was {self.score}. Resetting.")
+            self.score = 0
+        
+        return True # Continue training
+
+def run_training():
+    # --- Initialization ---
+    pygame.init()
+    env = SnakeEnv(render_mode='human')
     parser = LLMCommandParser()
     tts = TTS()
+    callback = InteractiveCallback(tts=tts, parser=parser)
 
     if os.path.exists(MODEL_PATH):
-        print(f"Loading existing model from {MODEL_PATH}"); model = PPO.load(MODEL_PATH, env=env)
+        print(f"Loading existing model from {MODEL_PATH}")
+        model = PPO.load(MODEL_PATH, env=env)
     else:
-        print("Creating new PPO model."); model = PPO("MlpPolicy", env, verbose=0)
+        print("Creating new PPO model.")
+        model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./snake_tensorboard/")
 
-    tts.speak("Agent is online. Starting dynamic training.")
-    obs = env.reset()
-    total_reward, episode_steps, last_level = 0, 0, 1
+    tts.speak("Agent is online. Use keyboard L, R, S to distract me.")
     
     try:
-        while True:
-            episode_steps += 1
-            user_input = input("Enter a command to distract (or press Enter): ")
-            parsed_action_str = parser.parse_command(user_input) if user_input else "idle"
-
-            action, _ = model.predict(obs, deterministic=False)
-            
-            voice_cmd_idx = ACTIONS.index(parsed_action_str) if parsed_action_str != "idle" else -1
-            
-            # We need to manually call the env's step method to pass the voice command
-            # This is a small hack to inject voice command into the next observation
-            next_obs, reward, done, info = env.envs[0].step(action[0], voice_command_idx=voice_cmd_idx)
-
-            final_reward = reward
-            if parsed_action_str != "idle" and ACTIONS[action[0]] == parsed_action_str:
-                final_reward += DISTRACTION_PENALTY
-                tts.speak(f"Distracted! Following your command: {parsed_action_str}.")
-
-            total_reward += final_reward
-            
-            model.replay_buffer.add(obs[0], next_obs, action[0], final_reward, done, info[0])
-            if episode_steps % model.n_steps == 0:
-                model.train()
-
-            # --- NEW: Announce Dynamic Events ---
-            current_level = env.envs[0].game.level
-            if current_level > last_level:
-                tts.speak(f"Level {current_level} reached! The maze is changing and I am getting faster.")
-                last_level = current_level
-            
-            obs = np.array([next_obs])
-            
-            if done:
-                score = info[0]['score']
-                tts.speak(f"Game over! Final score: {score}. Resetting the world.")
-                obs = env.reset()
-                total_reward, episode_steps = 0, 0
-                last_level = 1
-
+        # This is the stable, correct way to run the agent.
+        # The callback handles all interaction inside this blocking call.
+        model.learn(total_timesteps=1_000_000, callback=callback)
     except KeyboardInterrupt:
-        print("\nTraining interrupted.")
+        print("\nTraining interrupted by user.")
     finally:
         model.save(MODEL_PATH)
-        tts.speak(f"Model saved to {MODEL_PATH}. Agent offline.")
+        tts.speak("Model saved. Agent offline.")
         env.close()
 
 if __name__ == "__main__":
-    run_interactive_training()
+    run_training()

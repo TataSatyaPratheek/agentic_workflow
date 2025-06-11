@@ -1,3 +1,6 @@
 .venv/
 uv.lock
 *_pycache__/
+snake_tensorboard/
+dynamic_snake_ppo_agent.zip
+*.egg-info
