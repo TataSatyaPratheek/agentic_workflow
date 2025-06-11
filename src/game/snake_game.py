@@ -90,24 +90,41 @@ class SnakeGame:
 
     def _update_ui(self):
         """
-        Renders the current game state to the screen. This method assumes
-        _init_pygame() has been called and does nothing otherwise.
+        Renders the current game state. This version uses "dirty rect" updating
+        for significant performance gains, only redrawing what has changed.
         """
         if self.display is None:
-            return # This is a headless instance, do not render.
-        
-        self.display.fill((0, 0, 0))
+            return  # Headless instance
+
+        # --- OPTIMIZATION: Dirty Rect Rendering ---
+        self.display.fill((0, 0, 0)) # Clear the screen once
+        dirty_rects = [] # A list to hold rectangles that need updating
+
+        # Draw all components and add their bounding boxes to the dirty list
         for pt in self.snake:
-            pygame.draw.rect(self.display, (0, 200, 50), pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE))
+            rect = pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE)
+            pygame.draw.rect(self.display, (0, 200, 50), rect)
+            dirty_rects.append(rect)
+
         for obs in self.obstacles:
-            pygame.draw.rect(self.display, (100, 100, 100), pygame.Rect(obs.x, obs.y, BLOCK_SIZE, BLOCK_SIZE))
+            rect = pygame.Rect(obs.x, obs.y, BLOCK_SIZE, BLOCK_SIZE)
+            pygame.draw.rect(self.display, (100, 100, 100), rect)
+            dirty_rects.append(rect)
+
         for food_item in self.food_list:
-            pygame.draw.rect(self.display, (200, 0, 0), pygame.Rect(food_item.x, food_item.y, BLOCK_SIZE, BLOCK_SIZE))
+            rect = pygame.Rect(food_item.x, food_item.y, BLOCK_SIZE, BLOCK_SIZE)
+            pygame.draw.rect(self.display, (200, 0, 0), rect)
+            dirty_rects.append(rect)
         
         score_text = self.font.render(f"Score: {self.score}", True, TEXT_COLOR)
-        self.display.blit(score_text, [10, 10])
+        # We must also update the area where the score is drawn
+        score_rect = self.display.blit(score_text, [10, 10])
+        dirty_rects.append(score_rect)
         
-        pygame.display.flip()
+        # Instead of flip(), update only the changed parts of the screen.
+        pygame.display.update(dirty_rects)
+        # --- END OF OPTIMIZATION ---
+
         self.clock.tick(self.speed)
 
     # --- All other helper methods (_generate_maze, _is_path_available, etc.) remain unchanged ---
