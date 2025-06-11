@@ -5,3 +5,4 @@ snake_tensorboard/
 dynamic_snake_ppo_agent.zip
 *.egg-info
 .python-version
+rllib_snake_model_checkpoints/

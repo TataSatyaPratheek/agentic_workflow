@@ -17,4 +17,5 @@ dependencies = [
     "ray[rllib]",
     "sounddevice",
     "torch>=2.3.0",
+    "gputil>=1.4.0",
 ]
