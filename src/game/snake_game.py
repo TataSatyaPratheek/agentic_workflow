@@ -55,19 +55,21 @@ class SnakeGame:
     
     def play_step(self, action: list) -> tuple[int, bool, int]:
         """
-        Runs one step of the simulation. This is the high-performance core.
-        It has NO Pygame calls.
+        Runs one step of the simulation.
         """
         self.frame_iteration += 1
         self._move(action)
         self.snake.insert(0, self.head)
         
-        reward = 0
+        # --- REWARD SHAPING - LEVEL 1 ---
+        reward = 100  # Small reward for just surviving another frame
         game_over = False
+        # Give a large penalty for dying immediately
         if self.is_collision() or self.frame_iteration > 100 * len(self.snake):
             game_over = True
-            reward = REWARD_DEATH
+            reward = -20.0 # Increased penalty
             return reward, game_over, self.score
+        # --- END REWARD SHAPING ---
         
         food_eaten = False
         for food_item in list(self.food_list):

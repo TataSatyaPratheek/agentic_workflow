@@ -7,9 +7,9 @@ GAME_WINDOW_TITLE = "Optimized Agentic Snake"
 BASE_SPEED = 600
 SPEED_INCREMENT = 50
 LEVEL_UP_SCORE = 5
-MAX_OBSTACLES = 10
+MAX_OBSTACLES = 0
 BLOCK_SIZE = 20
-NUM_FOOD_ITEMS = 3
+NUM_FOOD_ITEMS = 1
 
 # --- Core RL & AI Settings ---
 AGENT_ACTIONS = ["straight", "right", "left"]
@@ -19,9 +19,6 @@ MODEL_PATH = "rllib_snake_model_checkpoints" # Directory for model checkpoints
 # --- OPTIMIZATION: Rewards tuned slightly for faster learning ---
 REWARD_FOOD = 10.0
 REWARD_DEATH = -10.0
-# These rewards are removed as they add complexity without significant benefit
-# REWARD_CLOSER = 0.2
-# REWARD_FARTHER = -0.3
 DISTRACTION_PENALTY = -2.0
 
 # AI Model Settings

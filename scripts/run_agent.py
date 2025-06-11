@@ -61,7 +61,7 @@ def run_training():
         .training(
             gamma=0.99,
             lr=5e-5,
-            train_batch_size_per_learner=2000, # Renamed for clarity in new API
+            train_batch_size_per_learner=256, # Renamed for clarity in new API
             # sgd_minibatch_size and num_sgd_iter are PPO-specific and might not be
             # accepted by .training() in all Ray versions. They will be set directly below.
             entropy_coeff=0.01,
