@@ -1,21 +1,20 @@
 # check_env.py
-import sys
-import os
 import gymnasium as gym
 from gymnasium.utils.env_checker import check_env
 
-# Add the project root to the Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sys, os
 
+# --- FIX: Add project root to sys.path ---
+# Since check_env.py is in the project root, os.path.dirname(os.path.abspath(__file__)) gives the project root.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# --- END FIX ---
 from src.game.snake_env import SnakeEnv
 
 if __name__ == "__main__":
     print("Creating and checking the SnakeEnv...")
     try:
-        # --- THE FIX: Instantiate using gymnasium.make() ---
         env = gym.make("Snake-v1")
-        # --- END OF FIX ---
-        
+        snake = SnakeEnv(config={"render_mode": None})
         check_env(env.unwrapped)
         print("\n✅ Success! The environment passed all checks and is fully compliant.")
 

@@ -18,24 +18,35 @@ class SnakeEnv(gym.Env):
     """
     metadata = {'render_modes': ['human'], 'render_fps': 30}
 
-    def __init__(self, config: dict = None):
+    def __init__(self, render_mode: str = None, config: dict = None):
         super().__init__()
 
-        config = config or {}
-        self.render_mode = config.get("render_mode")
-        
-        # --- THE FIX: Create the game *after* super().__init__() ---
-        # Now self.np_random exists (initialized by the Env base class property)
-        # and can be passed to the game engine.
-        self.game = SnakeGame(w=GAME_WIDTH, h=GAME_HEIGHT, np_random=self.np_random)
+        # Determine the effective render_mode
+        # Priority:
+        # 1. Direct render_mode argument (used by gym.make and check_env)
+        # 2. 'render_mode' key in the config dictionary (used by your RLlib env_creator)
+        # 3. None (default)
+        if render_mode is not None:
+            self.render_mode = render_mode
+        elif config and "render_mode" in config:
+            self.render_mode = config.get("render_mode")
+        else:
+            self.render_mode = None
+
+        # Store the rest of the config if provided, for other parameters
+        self.env_config = config or {}
+
+        # --- THE FINAL FIX: Defer game creation ---
+        # The game instance will be created in reset(), where the seeded
+        # RNG is guaranteed to be available.
+        self.game = None
+        # --- END OF FIX ---
+
         self.action_space = spaces.Discrete(3)  # 0: straight, 1: right, 2: left
         
         self.observation_space = spaces.Box(
             low=0, high=1, shape=(OBS_SPACE_SIZE,), dtype=np.float32
         )
-
-        if self.render_mode == 'human':
-            self.game._init_pygame()
 
     def _get_obs(self) -> np.ndarray:
         """Generates an observation purely from the current game state."""
@@ -90,12 +101,17 @@ class SnakeEnv(gym.Env):
 
 
     def reset(self, *, seed=None, options=None):
-        # This line is CRITICAL. It seeds self.np_random which is used by the game engine.
         super().reset(seed=seed)
         
-        # Now that the RNG is seeded, reset the game state
-        self.game.reset()
+        # --- THE FINAL FIX: Create the game instance here ---
+        # Now, the game is always created with the correctly seeded self.np_random.
+        self.game = SnakeGame(w=GAME_WIDTH, h=GAME_HEIGHT, np_random=self.np_random)
+        # --- END OF FIX ---
         
+        # This call to self.game.reset() is redundant because SnakeGame's __init__
+        # already calls its own reset method. Consider removing it for conciseness.
+        self.game.reset() # This now resets the new game instance
+
         # Get the initial observation and info
         obs = self._get_obs()
         info = {"score": 0} # info should always be a dict
@@ -103,5 +119,17 @@ class SnakeEnv(gym.Env):
         self.render()
         return obs, info
 
+    # def render(self):
+    #     # This is the original render method.
+    #     # For full check_env compliance, it's good to ensure it only renders
+    #     # when render_mode is 'human'.
+    #     self.game._update_ui()
+
     def render(self):
-        self.game._update_ui()
+        if self.render_mode == 'human':
+            if self.game is None: # Should be initialized by reset
+                return
+            
+            self.game._init_pygame() # Ensure Pygame is initialized for human mode
+            if self.game.display: # Proceed only if display was successfully initialized
+                self.game._update_ui()

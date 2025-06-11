@@ -1,5 +1,12 @@
 # scripts/run_agent.py
 import sys, os
+
+# --- FIX: Add project root to sys.path BEFORE attempting to import 'src' ---
+# This ensures that the 'src' package can be found.
+PROJECT_ROOT_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROJECT_ROOT_PATH)
+# --- END FIX ---
+
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
@@ -9,11 +16,8 @@ import time
 import gymnasium as gym
 
 import src
-from src.config import MODEL_PATH as MODEL_BASE_DIR_NAME
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from src.game.snake_env import SnakeEnv
+from src.config import MODEL_PATH as MODEL_BASE_DIR_NAME # Moved after sys.path fix for consistency
 
 def env_creator(env_config: dict):
     return SnakeEnv(config=env_config)
@@ -25,7 +29,7 @@ def run_training():
     print("Ray initialized.")
 
     # Determine project root to make paths absolute
-    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    PROJECT_ROOT = PROJECT_ROOT_PATH # Use the already defined path
     # Define the main directory where all model artifacts will be stored
     main_model_artifacts_path = os.path.join(PROJECT_ROOT, MODEL_BASE_DIR_NAME)
     os.makedirs(main_model_artifacts_path, exist_ok=True) # Ensure this base directory exists
