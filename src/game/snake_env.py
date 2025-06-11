@@ -43,10 +43,13 @@ class SnakeEnv(gym.Env):
         point_u = Point(head.x, head.y - BLOCK_SIZE)
         point_d = Point(head.x, head.y + BLOCK_SIZE)
         
-        dir_l = self.game.direction == self.game.direction_map['LEFT']
-        dir_r = self.game.direction == self.game.direction_map['RIGHT']
-        dir_u = self.game.direction == self.game.direction_map['UP']
-        dir_d = self.game.direction == self.game.direction_map['DOWN']
+        # Corrected direction checking:
+        # self.game.direction is a string (e.g., "LEFT", "RIGHT").
+        # Compare directly with string literals.
+        dir_l = self.game.direction == "LEFT"
+        dir_r = self.game.direction == "RIGHT"
+        dir_u = self.game.direction == "UP"
+        dir_d = self.game.direction == "DOWN"
 
         # Danger ahead, danger right, danger left
         danger_state = [
@@ -85,12 +88,18 @@ class SnakeEnv(gym.Env):
 
 
     def reset(self, *, seed=None, options=None):
+        # This line is CRITICAL. It seeds self.np_random which is used by the game engine.
         super().reset(seed=seed)
+        
+        # Now that the RNG is seeded, reset the game state
         self.game.reset()
+        
+        # Get the initial observation and info
         obs = self._get_obs()
+        info = {"score": 0} # info should always be a dict
 
         self.render()
-        return obs, {"score": 0}
+        return obs, info
 
     def render(self):
         self.game._update_ui()
