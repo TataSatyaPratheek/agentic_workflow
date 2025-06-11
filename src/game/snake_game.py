@@ -22,20 +22,22 @@ class SnakeGame:
     def reset(self):
         self.level = 1
         self.speed = BASE_SPEED
-        self.direction = 3 # Start moving down
+        # --- REVISED LINE: Use strings for clarity and consistency ---
+        self.direction = "RIGHT" # Options: "RIGHT", "LEFT", "UP", "DOWN"
+        # --- END REVISED LINE ---
         self.head = Point(self.w/2, self.h/2)
-        self.snake = [self.head, Point(self.head.x, self.head.y-BLOCK_SIZE)]
-        self.score = 0        
-        self.foods = [] # Changed from self.food to self.foods (a list)
+        self.snake = [self.head, Point(self.head.x-BLOCK_SIZE, self.head.y)] # Initial segment to the left for "RIGHT" direction
+        self.score = 0
+        self.food_list = [] # Changed from self.foods to self.food_list
         self._generate_maze()
-        self._place_initial_foods() # New method to place multiple food items
+        for _ in range(NUM_FOOD_ITEMS): # Place initial food items
+            self._place_food()
         if self.is_collision(): self.reset() # Ensure initial state is not game over
         self.frame_iteration = 0
 
     def _generate_maze(self):
         """Generates a random maze. Obstacles increase with level, capped by MAX_OBSTACLES."""
         self.obstacles = []
-        
         # Number of obstacles increases with level, e.g., level 1 = 0, level 2 = 1, ..., up to MAX_OBSTACLES
         num_obstacles_to_place = min(MAX_OBSTACLES, (self.level - 1))
 
@@ -69,15 +71,9 @@ class SnakeGame:
                     q.append(neighbor)
         return False
 
-    def _place_initial_foods(self):
-        """Places the initial set of food items."""
-        self.foods = []
-        for _ in range(NUM_FOOD_ITEMS):
-            self._add_new_food()
-
-    def _add_new_food(self):
+    def _place_food(self): # Renamed from _add_new_food
         """Adds a single new food item to a random, reachable, and valid location."""
-        if len(self.foods) >= NUM_FOOD_ITEMS:
+        if len(self.food_list) >= NUM_FOOD_ITEMS:
             return # Max food items reached
 
         max_attempts = (self.w // BLOCK_SIZE) * (self.h // BLOCK_SIZE)
@@ -87,21 +83,21 @@ class SnakeGame:
             candidate_food = Point(x, y)
             if candidate_food not in self.snake and \
                candidate_food not in self.obstacles and \
-               candidate_food not in self.foods: # Check against other food items
+               candidate_food not in self.food_list: # Check against other food items
                 if self._is_path_available(self.head, candidate_food):
-                    self.foods.append(candidate_food)
+                    self.food_list.append(candidate_food)
                     return
         print("Warning: Could not place a new reachable food item after max attempts.")
 
     def find_nearest_food(self):
         """Finds the food item closest to the snake's head."""
-        if not self.foods:
+        if not self.food_list:
             return None
         
         # self.head is Point(x,y)
-        # food items in self.foods are also Point(x,y)
+        # food items in self.food_list are also Point(x,y)
         # Calculate distance from self.head to each food item
-        nearest = min(self.foods, 
+        nearest = min(self.food_list,
                       key=lambda food_item: np.linalg.norm(
                           np.array([food_item.x, food_item.y]) - np.array([self.head.x, self.head.y])
                       ))
@@ -123,12 +119,12 @@ class SnakeGame:
             return reward, game_over, self.score
         
         food_eaten = False
-        for food_item in list(self.foods): # Iterate over a copy for safe removal
+        for food_item in list(self.food_list): # Iterate over a copy for safe removal
             if self.head == food_item:
                 self.score += 1
                 reward = REWARD_FOOD
-                self.foods.remove(food_item)
-                self._add_new_food() # Replenish food
+                self.food_list.remove(food_item)
+                self._place_food() # Replenish food by calling the renamed method
                 food_eaten = True
 
                 # Level Up Logic
@@ -154,40 +150,31 @@ class SnakeGame:
         return False
 
     def _move(self, action):
-        # --- REVISED TURNING LOGIC ---
-        # Action: [Straight, Right Turn, Left Turn]
-        # This logic is clearer and less error-prone.
-        dirs = [0, 1, 2, 3] # R, L, U, D
-        current_dir_idx = dirs.index(self.direction)
-
+        # action is [straight, right_turn, left_turn]
+        
+        # --- REVISED LOGIC: This logic now correctly handles string-based directions ---
         if np.array_equal(action, [1, 0, 0]): # Straight
-            new_dir = self.direction
+            # No change in direction
+            pass
         elif np.array_equal(action, [0, 1, 0]): # Right Turn
-            turn_map = {0: 3, 3: 1, 1: 2, 2: 0} # R->D, D->L, L->U, U->R
-            new_dir = turn_map[self.direction]
-        else: # Left Turn
-            turn_map = {0: 2, 2: 1, 1: 3, 3: 0} # R->U, U->L, L->D, D->R
-            new_dir = turn_map[self.direction]
-        self.direction = new_dir
-        
-        x, y = self.head.x, self.head.y
-        if self.direction == 0: x += BLOCK_SIZE
-        elif self.direction == 1: x -= BLOCK_SIZE
-        elif self.direction == 2: y -= BLOCK_SIZE
-        elif self.direction == 3: y += BLOCK_SIZE
+            turn_map = {"UP": "RIGHT", "RIGHT": "DOWN", "DOWN": "LEFT", "LEFT": "UP"}
+            self.direction = turn_map[self.direction]
+        else: # Left Turn (assuming action [0,0,1])
+            turn_map = {"UP": "LEFT", "LEFT": "DOWN", "DOWN": "RIGHT", "RIGHT": "UP"}
+            self.direction = turn_map[self.direction]
+        # --- END REVISED LOGIC ---
 
-        # Screen wrapping logic
-        if x < 0:
-            x = self.w - BLOCK_SIZE  # Wrap to right edge
-        elif x >= self.w:
-            x = 0  # Wrap to left edge
-        
-        if y < 0:
-            y = self.h - BLOCK_SIZE  # Wrap to bottom edge
-        elif y >= self.h:
-            y = 0  # Wrap to top edge
-            
-        self.head = Point(x,y)
+        x, y = self.head.x, self.head.y
+        move_map = {
+            "RIGHT": (x + BLOCK_SIZE, y),
+            "LEFT": (x - BLOCK_SIZE, y),
+            "UP": (x, y - BLOCK_SIZE),
+            "DOWN": (x, y + BLOCK_SIZE)
+        }
+        next_x, next_y = move_map[self.direction]
+
+        # Screen wrap logic using modulo operator
+        self.head = Point(next_x % self.w, next_y % self.h)
 
     def _draw_stats(self, text, x, y):
         """Helper to draw text on the screen."""
@@ -210,7 +197,7 @@ class SnakeGame:
             pygame.draw.rect(self.display, (0, 200, 50), pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE))
         for obs in self.obstacles:
             pygame.draw.rect(self.display, (100, 100, 100), pygame.Rect(obs.x, obs.y, BLOCK_SIZE, BLOCK_SIZE))
-        for food_item in self.foods: # Draw all food items
+        for food_item in self.food_list: # Draw all food items
             pygame.draw.rect(self.display, (200,0,0), pygame.Rect(food_item.x, food_item.y, BLOCK_SIZE, BLOCK_SIZE))
 
         self._draw_stats(f"Score: {score}", 10, 10)

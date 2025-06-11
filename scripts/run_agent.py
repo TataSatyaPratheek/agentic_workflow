@@ -27,55 +27,54 @@ class InteractiveCallback(BaseCallback):
         for event in pygame.event.get():
             if event.type == pygame.QUIT: return False
             
-            # Text input handling
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if pygame.Rect(INPUT_BOX_RECT).collidepoint(event.pos):
-                    self.input_active = not self.input_active
-                else:
-                    self.input_active = False
+                if pygame.Rect(INPUT_BOX_RECT).collidepoint(event.pos): self.input_active = not self.input_active
+                else: self.input_active = False
             
-            if self.input_active:
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_RETURN:
-                        # Parse the text with the LLM when Enter is pressed
-                        if self.input_text:
-                            distraction_command = self.parser.parse_command(self.input_text)
-                            self.tts.speak(f"Command received: {self.input_text}")
-                        self.input_text = "" # Clear the box
-                    elif event.key == pygame.K_BACKSPACE:
-                        self.input_text = self.input_text[:-1]
-                    else:
-                        self.input_text += event.unicode
+            if self.input_active and event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    if self.input_text:
+                        # Use the LLM parser for text commands
+                        distraction_command = self.parser.parse_command(self.input_text)
+                        self.tts.speak(f"Command received: {self.input_text}")
+                    self.input_text = ""
+                elif event.key == pygame.K_BACKSPACE: self.input_text = self.input_text[:-1]
+                else: self.input_text += event.unicode
             
-            # Arrow key handling (always active)
-            if event.type == pygame.KEYDOWN:
+            elif not self.input_active and event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT: distraction_command = "left"
                 elif event.key == pygame.K_RIGHT: distraction_command = "right"
                 elif event.key == pygame.K_UP: distraction_command = "up"
                 elif event.key == pygame.K_DOWN: distraction_command = "down"
 
+        # --- THE KEY FIX IS HERE ---
+        # We must "unwrap" the environment to access your custom attributes like .game
+        # self.training_env is the VecEnv, .envs[0] is the Monitor, .env is your SnakeEnv
+        env = self.training_env.envs[0].env
+        # --- END OF KEY FIX ---
+
         # 2. Apply Distraction Penalty
         last_action = self.locals['actions'][0]
-        agent_dir = self.training_env.envs[0].game.direction.lower()
+        agent_dir = env.game.direction.lower()
         
-        # Check if agent's absolute direction matches a distraction command
         if distraction_command != "idle" and distraction_command == agent_dir:
             self.locals['rewards'][0] += DISTRACTION_PENALTY
             self.agent_status = f"Distracted! Obeyed {distraction_command}"
         else:
             self.agent_status = "Self-Playing"
 
-        # 3. Render the Game with Live Stats and Input Box
+        # 3. Render the Game with Live Stats
         last_reward = self.locals['rewards'][0]
         self.score = self.locals['infos'][0].get('score', self.score)
-        env = self.training_env.envs[0]
+        # Call the render method on the unwrapped env
         env.render(self.score, last_reward, self.agent_status, self.input_text, self.input_active)
         
         if self.locals['dones'][0]:
             self.tts.speak(f"Game over! Score was {self.score}. Resetting.")
             self.score = 0
-            self.last_level = 1
+            self.last_level = 1 # Reset level tracker
         
+        # Access the game's level through the unwrapped env
         if env.game.level > self.last_level:
             self.tts.speak(f"Level {env.game.level} reached!")
             self.last_level = env.game.level
@@ -84,8 +83,9 @@ class InteractiveCallback(BaseCallback):
 
 def run_training():
     pygame.init()
+    # The environment is created once here
     env = SnakeEnv(render_mode='human')
-    parser = LLMCommandParser() # Your LLM parser is back!
+    parser = LLMCommandParser()
     tts = TTS()
     callback = InteractiveCallback(tts=tts, parser=parser)
 
@@ -99,6 +99,8 @@ def run_training():
     tts.speak("Agent is online. Use ARROW KEYS or CLICK THE BOX to type commands.")
     
     try:
+        # The model.learn() method correctly handles the environment, including wrapping.
+        # Our callback now correctly accesses the unwrapped environment inside the loop.
         model.learn(total_timesteps=1_000_000, callback=callback)
     except KeyboardInterrupt:
         print("\nTraining interrupted by user.")

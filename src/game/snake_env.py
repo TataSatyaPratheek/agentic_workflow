@@ -5,7 +5,7 @@ import numpy as np
 import pygame
 
 from src.game.snake_game import SnakeGame, Point, BLOCK_SIZE
-from src.config import OBS_SPACE_SIZE
+from src.config import OBS_SPACE_SIZE, REWARD_CLOSER, REWARD_FARTHER
 
 class SnakeEnv(gym.Env):
     metadata = {'render_modes': ['human'], 'render_fps': 40}
@@ -16,7 +16,7 @@ class SnakeEnv(gym.Env):
         self.render_mode = render_mode
         self.action_space = spaces.Discrete(3)
         self.observation_space = spaces.Box(low=0, high=1, shape=(OBS_SPACE_SIZE,), dtype=np.float32)
-        self.last_voice_command_idx = -1 # Initialize voice command state
+        self.last_voice_command_idx = -1
 
     def _get_obs(self, voice_command_idx):
         head = self.game.head
@@ -67,6 +67,10 @@ class SnakeEnv(gym.Env):
         self.last_voice_command_idx = -1 # Reset voice command state
         return self._get_obs(self.last_voice_command_idx), {}
 
-    def render(self, score=0, reward=0.0, status=""):
-        self.game._update_ui(score, reward, status)
+    # --- THE KEY FIX IS HERE ---
+    # The render method must accept all the arguments passed to it by the callback.
+    def render(self, score=0, reward=0.0, status="", input_text="", input_active=False):
+        # This function now correctly passes all the live stats to the game's UI updater.
+        self.game._update_ui(score, reward, status, input_text, input_active)
+    # --- END OF KEY FIX ---
     def close(self): pygame.quit()
