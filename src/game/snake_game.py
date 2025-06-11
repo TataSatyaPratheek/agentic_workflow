@@ -53,57 +53,58 @@ class SnakeGame:
             self.reset()
         self.frame_iteration = 0
     
-    def play_step(self, action: list) -> tuple[int, bool, int]:
+    def play_step(self, action: list) -> tuple[int, bool, bool, int]:
         """
-        Runs one step of the simulation with corrected reward shaping.
+        Runs one step of the simulation with corrected reward shaping AND
+        correct terminated/truncated logic.
+        Returns: reward, terminated, truncated, score
         """
         self.frame_iteration += 1
 
-        # --- REWARD SHAPING: Calculate distance to food BEFORE moving ---
         nearest_food = self.find_nearest_food()
         old_distance = np.inf
         if nearest_food:
             old_distance = np.linalg.norm(np.array([self.head.x, self.head.y]) - np.array([nearest_food.x, nearest_food.y]))
 
-        # Move the snake
         self._move(action)
         self.snake.insert(0, self.head)
 
-        # --- THE CANONICAL FIX: A robust reward structure ---
-        reward = 0  # Start with a neutral reward
-        game_over = False
+        reward = 0
+        terminated = False
+        truncated = False
 
-        # 1. Check for death
-        if self.is_collision() or self.frame_iteration > 100 * len(self.snake):
-            game_over = True
-            reward = REWARD_DEATH  # Use the large negative penalty from config.py
-            return reward, game_over, self.score
+        # 1. Check for termination (death by collision)
+        if self.is_collision():
+            terminated = True
+            reward = REWARD_DEATH
+            return reward, terminated, truncated, self.score
 
-        # 2. Check for eating food
-        food_eaten = False
-        for food_item in list(self.food_list):
-            if self.head == food_item:
-                self.score += 1
-                reward = REWARD_FOOD  # Use the large positive reward from config.py
-                self.food_list.remove(food_item)
-                self._place_food()
-                food_eaten = True
-                # Level up logic can remain here
-                break
-        
-        # 3. If no death and no food, reward/penalize based on distance
-        if not food_eaten:
+        # 2. Check for truncation (time limit)
+        if self.frame_iteration > 100 * len(self.snake):
+            truncated = True
+            # No penalty for truncation, it's not the agent's fault
+            return reward, terminated, truncated, self.score
+
+        # 3. Check for eating food
+        if self.head in self.food_list:
+            self.score += 1
+            reward = REWARD_FOOD
+            self.food_list.remove(self.head)
+            self._place_food()
+        else:
+            # 4. If no events, shape reward based on distance
             self.snake.pop()
             new_distance = np.inf
             if nearest_food:
                 new_distance = np.linalg.norm(np.array([self.head.x, self.head.y]) - np.array([nearest_food.x, nearest_food.y]))
             
             if new_distance < old_distance:
-                reward = 1.0  # Reward for getting closer to food
+                reward = 1.0
             else:
-                reward = -1.5 # Penalize for moving away from food
+                reward = -1.5
                 
-        return reward, game_over, self.score
+        return reward, terminated, truncated, self.score
+
 
 
     def _update_ui(self):
@@ -187,4 +188,4 @@ class SnakeGame:
         x, y = self.head.x, self.head.y
         move_map = {"RIGHT": (x + BLOCK_SIZE, y), "LEFT": (x - BLOCK_SIZE, y), "UP": (x, y - BLOCK_SIZE), "DOWN": (x, y + BLOCK_SIZE)}
         next_x, next_y = move_map[self.direction]
-        self.head = Point(next_x % self.w, next_y % self.h)
+        self.head = Point(next_x, next_y)

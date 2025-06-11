@@ -78,13 +78,15 @@ class SnakeEnv(gym.Env):
         action_one_hot = [0] * 3
         action_one_hot[action] = 1
         
-        reward, game_over, score = self.game.play_step(action_one_hot)
+        # Use the new, correct return values from the game engine
+        reward, terminated, truncated, score = self.game.play_step(action_one_hot)
         obs = self._get_obs()
 
-        # We now call render here; self.game._update_ui() inside render()
-        # will do nothing if Pygame was not initialized (i.e., in headless mode).
         self.render()
-        return obs, reward, game_over, False, {"score": score}
+        
+        # Pass terminated and truncated directly to RLlib
+        return obs, reward, terminated, truncated, {"score": score}
+
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
