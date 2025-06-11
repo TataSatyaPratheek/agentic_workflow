@@ -10,7 +10,8 @@ MAX_OBSTACLES = 10          # Maximum number of obstacles in the maze
 NUM_FOOD_ITEMS = 3          # Number of food items on screen at a time
 
 # --- Core RL & AI Settings ---
-ACTIONS = ["straight", "right", "left"]
+AGENT_ACTIONS = ["straight", "right", "left"]
+DISTRACTION_ACTIONS = ["up", "down", "left", "right", "straight"]
 OBS_SPACE_SIZE = 14
 MODEL_PATH = "dynamic_snake_ppo_agent.zip"
 
@@ -24,3 +25,8 @@ DISTRACTION_PENALTY = -2.0
 # AI Model Settings
 ASR_MODEL = "tiny.en"
 LLM_CLASSIFIER = "Recognai/zeroshot_selectra_small"
+
+# --- NEW: UI Settings for Text Input ---
+INPUT_BOX_RECT = (10, 80, 400, 32) # Position and size (x, y, width, height)
+INPUT_BOX_COLOR_INACTIVE = (100, 100, 100)
+INPUT_BOX_COLOR_ACTIVE = (200, 200, 200)

@@ -32,18 +32,18 @@ class SnakeEnv(gym.Env):
         ]
         
         # Food observation - relative to nearest food
-        food_obs = [False, False, False, False] # Default: no food perceived / food far
-        if self.game.foods: # Check if there's any food
-            try:
-                nearest_food = min(self.game.foods, key=lambda f: np.linalg.norm(np.array([f.x, f.y]) - np.array([head.x, head.y])))
-                food_obs = [
-                    nearest_food.x < head.x,  # Food left
-                    nearest_food.x > head.x,  # Food right
-                    nearest_food.y < head.y,  # Food up
-                    nearest_food.y > head.y   # Food down
-                ]
-            except ValueError: # Should not happen if self.game.foods is not empty, but as a safeguard
-                pass 
+        food_obs = [False, False, False, False] # Default: no food perceived
+        
+        # 'head' is self.game.head, defined at the start of _get_obs
+        nearest_food_item = self.game.find_nearest_food() # Call the new method in SnakeGame
+        
+        if nearest_food_item:
+            food_obs = [
+                nearest_food_item.x < head.x,  # Food left
+                nearest_food_item.x > head.x,  # Food right
+                nearest_food_item.y < head.y,  # Food up
+                nearest_food_item.y > head.y   # Food down
+            ]
         
         game_state = collision_dir_state + food_obs
         voice_state = [0] * 3

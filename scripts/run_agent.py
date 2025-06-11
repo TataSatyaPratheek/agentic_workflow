@@ -1,140 +1,111 @@
 # scripts/run_agent.py
-import sys, os, time, torch as th
-import numpy as np
+import sys, os
 import pygame
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.game.snake_env import SnakeEnv
-from src.agent.llm_parser import LLMCommandParser
+from src.agent.llm_parser import LLMCommandParser # We are using this again!
 from src.io.tts import TTS
 from src.config import *
 from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import BaseCallback
 
-def run_interactive_training():
-    """
-    A stable, interactive training loop using a standard Pygame event handler
-    and the correct on-policy training method for PPO.
-    """
-    # --- Initialization ---
-    pygame.init()
-    env = SnakeEnv(render_mode='human') # We use the single, direct environment
-    parser = LLMCommandParser()
-    tts = TTS()
+class InteractiveCallback(BaseCallback):
+    """A custom callback for stable, hybrid (keyboard + text) interaction."""
+    def __init__(self, tts: TTS, parser: LLMCommandParser, verbose=0):
+        super().__init__(verbose)
+        self.tts = tts
+        self.parser = parser
+        self.score, self.last_level = 0, 1
+        self.agent_status = "Self-Playing"
+        self.input_text = ""
+        self.input_active = False
 
-    # n_steps must match the size of the rollout buffer
-    n_steps = 512
-    if os.path.exists(MODEL_PATH):
-        print(f"Loading existing model from {MODEL_PATH}")
-        # Allow the loaded model to use its saved n_steps.
-        # The n_steps parameter in PPO.load can sometimes cause issues
-        # if it mismatches the saved model's n_steps, especially in older SB3 versions.
-        model = PPO.load(MODEL_PATH, env=env)
-    else:
-        print("Creating new PPO model.")
-        model = PPO("MlpPolicy", env, verbose=0, n_steps=n_steps)
-
-    # --- Game Loop Variables ---
-    obs, _ = env.reset()
-    last_reward, score, last_level = 0.0, 0, 1
-    # prev_done indicates if the 'obs' is the start of a new episode.
-    # True for the initial state after reset.
-    prev_done = True
-    agent_status = "Self-Playing"
-    running = True
-
-    tts.speak("Agent is online. Use Arrow Keys (Up, Left, Right) to distract me.")
-    
-    # --- The Stable Game Loop ---
-    while running:
-        # 1. Handle Non-Blocking User Input via Pygame Events
+    def _on_step(self) -> bool:
+        # 1. Handle Hybrid Pygame Events
         distraction_command = "idle"
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
+            if event.type == pygame.QUIT: return False
+            
+            # Text input handling
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if pygame.Rect(INPUT_BOX_RECT).collidepoint(event.pos):
+                    self.input_active = not self.input_active
+                else:
+                    self.input_active = False
+            
+            if self.input_active:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        # Parse the text with the LLM when Enter is pressed
+                        if self.input_text:
+                            distraction_command = self.parser.parse_command(self.input_text)
+                            self.tts.speak(f"Command received: {self.input_text}")
+                        self.input_text = "" # Clear the box
+                    elif event.key == pygame.K_BACKSPACE:
+                        self.input_text = self.input_text[:-1]
+                    else:
+                        self.input_text += event.unicode
+            
+            # Arrow key handling (always active)
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT: distraction_command = "left"
                 elif event.key == pygame.K_RIGHT: distraction_command = "right"
-                elif event.key == pygame.K_UP: distraction_command = "straight"
-                
-                if distraction_command != "idle":
-                    agent_status = f"Distracted: {distraction_command}"
-                    tts.speak(f"Distraction received: {distraction_command}")
+                elif event.key == pygame.K_UP: distraction_command = "up"
+                elif event.key == pygame.K_DOWN: distraction_command = "down"
 
-        # 2. Agent Decides Action, gets value and log_prob for the current 'obs'
-        # Convert current observation 'obs' to a PyTorch tensor
-        obs_tensor = th.as_tensor(obs, device=model.device).unsqueeze(0)
-        with th.no_grad():
-            # model.policy(obs_tensor) returns action, value, log_probability
-            action_tensor, value_tensor, log_prob_tensor = model.policy(obs_tensor)
+        # 2. Apply Distraction Penalty
+        last_action = self.locals['actions'][0]
+        agent_dir = self.training_env.envs[0].game.direction.lower()
+        
+        # Check if agent's absolute direction matches a distraction command
+        if distraction_command != "idle" and distraction_command == agent_dir:
+            self.locals['rewards'][0] += DISTRACTION_PENALTY
+            self.agent_status = f"Distracted! Obeyed {distraction_command}"
+        else:
+            self.agent_status = "Self-Playing"
 
-        action_np = action_tensor.cpu().numpy() # np.array([int_action]) for discrete
-        action_for_env = action_np[0] # Integer action for env.step()
+        # 3. Render the Game with Live Stats and Input Box
+        last_reward = self.locals['rewards'][0]
+        self.score = self.locals['infos'][0].get('score', self.score)
+        env = self.training_env.envs[0]
+        env.render(self.score, last_reward, self.agent_status, self.input_text, self.input_active)
+        
+        if self.locals['dones'][0]:
+            self.tts.speak(f"Game over! Score was {self.score}. Resetting.")
+            self.score = 0
+            self.last_level = 1
+        
+        if env.game.level > self.last_level:
+            self.tts.speak(f"Level {env.game.level} reached!")
+            self.last_level = env.game.level
+            
+        return True
 
-        # 3. Environment Steps Forward with the chosen action
-        voice_cmd_idx = ACTIONS.index(distraction_command) if distraction_command != "idle" else -1
-        # Manually set the voice command state on the env before stepping
-        env.last_voice_command_idx = voice_cmd_idx
-        next_obs, reward, done_after_step, _, info = env.step(action_for_env)
-        
-        last_reward = reward
-        score = info.get('score', score)
-        
-        # 4. Calculate Final Reward (with distraction penalty)
-        final_reward = reward
-        if distraction_command != "idle" and ACTIONS[action_for_env] == distraction_command:
-            final_reward += DISTRACTION_PENALTY
-            agent_status = f"Distracted! Obeyed {distraction_command}"
+def run_training():
+    pygame.init()
+    env = SnakeEnv(render_mode='human')
+    parser = LLMCommandParser() # Your LLM parser is back!
+    tts = TTS()
+    callback = InteractiveCallback(tts=tts, parser=parser)
 
-        # 5. Add experience to PPO's rollout_buffer
-        # obs: current observation (s_t)
-        # action_np: action taken (a_t)
-        # reward_for_buffer: reward received (r_t)
-        # episode_start_for_buffer: whether 'obs' was the start of an episode (d_{t-1})
-        # value_tensor: V(s_t)
-        # log_prob_tensor: log_prob(a_t | s_t)
-        reward_for_buffer = np.array([final_reward], dtype=np.float32)
-        episode_start_for_buffer = np.array([prev_done], dtype=np.float32)
+    if os.path.exists(MODEL_PATH):
+        print(f"Loading existing model from {MODEL_PATH}")
+        model = PPO.load(MODEL_PATH, env=env)
+    else:
+        print("Creating new PPO model.")
+        model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./snake_tensorboard/")
 
-        model.rollout_buffer.add(obs, action_np, reward_for_buffer, episode_start_for_buffer, value_tensor, log_prob_tensor)
-        
-        # Update obs to next_obs and prev_done to done_after_step for the next iteration
-        obs = next_obs
-        prev_done = done_after_step
-        
-        # 6. Train if the buffer is full (The Correct On-Policy Way)
-        if model.rollout_buffer.full:
-            agent_status = "Learning..."
-            # Compute GAE and returns before training
-            with th.no_grad():
-                # Value of the last observation (current 'obs', which is s_{t+N})
-                next_value_for_gae = model.policy.predict_values(th.as_tensor(obs, device=model.device).unsqueeze(0))
-            # 'dones' for compute_returns_and_advantage is the 'done' status of the last state in the rollout (prev_done)
-            model.rollout_buffer.compute_returns_and_advantage(last_values=next_value_for_gae, dones=np.array([prev_done]))
-            model.train()
-            model.rollout_buffer.reset()
-        elif "Distracted" not in agent_status:
-             agent_status = "Self-Playing"
-        
-        # 7. Render the Game and Stats
-        env.render(score, last_reward, agent_status)
-        
-        # 8. Handle Game Over and Level Ups
-        if done_after_step:
-            tts.speak(f"Game over! Final score was {score}. Resetting.")
-            obs, _ = env.reset()
-            score, last_level = 0, 1
-            prev_done = True # After reset, the new 'obs' is an episode start
-        
-        current_level = env.game.level
-        if current_level > last_level:
-            tts.speak(f"Level {current_level} reached!")
-            last_level = current_level
-
-    # --- Shutdown ---
-    print("\nShutting down. Saving model...")
-    model.save(MODEL_PATH)
-    tts.speak("Model saved. Agent offline.")
-    env.close()
+    tts.speak("Agent is online. Use ARROW KEYS or CLICK THE BOX to type commands.")
+    
+    try:
+        model.learn(total_timesteps=1_000_000, callback=callback)
+    except KeyboardInterrupt:
+        print("\nTraining interrupted by user.")
+    finally:
+        model.save(MODEL_PATH)
+        tts.speak("Model saved. Agent offline.")
+        env.close()
 
 if __name__ == "__main__":
-    run_interactive_training()
+    run_training()

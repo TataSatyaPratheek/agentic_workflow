@@ -93,6 +93,20 @@ class SnakeGame:
                     return
         print("Warning: Could not place a new reachable food item after max attempts.")
 
+    def find_nearest_food(self):
+        """Finds the food item closest to the snake's head."""
+        if not self.foods:
+            return None
+        
+        # self.head is Point(x,y)
+        # food items in self.foods are also Point(x,y)
+        # Calculate distance from self.head to each food item
+        nearest = min(self.foods, 
+                      key=lambda food_item: np.linalg.norm(
+                          np.array([food_item.x, food_item.y]) - np.array([self.head.x, self.head.y])
+                      ))
+        return nearest
+
     def play_step(self, action):
         self.frame_iteration += 1
         for event in pygame.event.get():
@@ -181,8 +195,16 @@ class SnakeGame:
         text_surface = font.render(text, True, (255, 255, 255)) # White text
         self.display.blit(text_surface, (x, y))
 
-    def _update_ui(self, score=0, reward=0.0, status="Starting..."):
-        """Updated to include drawing live stats."""
+    def _draw_input_box(self, rect, text, font, is_active):
+        """Helper to draw the text input box."""
+        color = INPUT_BOX_COLOR_ACTIVE if is_active else INPUT_BOX_COLOR_INACTIVE
+        pygame.draw.rect(self.display, color, rect, 2)
+        text_surface = font.render(text, True, (255, 255, 255))
+        # Render text inside the box, with a small padding
+        self.display.blit(text_surface, (rect.x + 5, rect.y + 5))
+
+    def _update_ui(self, score=0, reward=0.0, status="Starting...", input_text="", input_active=False):
+        """Updated to include drawing live stats and the text input box."""
         self.display.fill((0,0,0))
         for pt in self.snake:
             pygame.draw.rect(self.display, (0, 200, 50), pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE))
@@ -194,5 +216,11 @@ class SnakeGame:
         self._draw_stats(f"Score: {score}", 10, 10)
         self._draw_stats(f"Last Reward: {reward:.2f}", 10, 30)
         self._draw_stats(f"Status: {status}", 10, 50)
+        
+        # --- Draw the new input box ---
+        input_box_pygame_rect = pygame.Rect(INPUT_BOX_RECT)
+        # Use the same font as _draw_stats or define a new one if needed
+        font = pygame.font.Font(pygame.font.get_default_font(), 20)
+        self._draw_input_box(input_box_pygame_rect, input_text, font, input_active)
         
         pygame.display.flip()

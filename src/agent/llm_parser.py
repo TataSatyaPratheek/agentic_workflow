@@ -1,6 +1,6 @@
 # src/agent/llm_parser.py
 from transformers import pipeline
-from src.config import ACTIONS, LLM_CLASSIFIER
+from src.config import AGENT_ACTIONS, LLM_CLASSIFIER
 
 class LLMCommandParser:
     """Uses a zero-shot pipeline to classify user commands into game actions."""
@@ -18,9 +18,9 @@ class LLMCommandParser:
     def parse_command(self, text: str) -> str:
         """
         Parses the user's text command to determine the most likely action.
-        Returns one of the actions from the global ACTIONS list.
+        Returns one of the actions from the global AGENT_ACTIONS list.
         """
         if not text:
             return "idle"
-        result = self.classifier(text, candidate_labels=ACTIONS)
+        result = self.classifier(text, candidate_labels=AGENT_ACTIONS)
         return result['labels'][0]
