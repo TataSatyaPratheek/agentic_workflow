@@ -13,7 +13,7 @@ NUM_FOOD_ITEMS = 3          # Number of food items on screen at a time
 # --- Core RL & AI Settings ---
 AGENT_ACTIONS = ["straight", "right", "left"]
 DISTRACTION_ACTIONS = ["up", "down", "left", "right", "straight"]
-OBS_SPACE_SIZE = 14
+OBS_SPACE_SIZE = 11
 MODEL_PATH = "dynamic_snake_ppo_agent.zip"
 
 # Rewards & Penalties
