@@ -1,48 +1,73 @@
 # scripts/run_agent.py
 import time
-from src.io.vision import ScreenCapture
-from src.io.asr import ASR
+import numpy as np
+
 from src.io.tts import TTS
-from src.game.controller import GameController
-# from src.agent.policy import RLAgentPolicy # Will be imported later
+from src.game.teeworlds_env import TeeworldsEnv
+from src.agent.llm_parser import LLMCommandParser
+from src.agent.policy import RLAgentPolicy
+from src.config import ACTIONS, REWARD_IMITATION_SUCCESS, REWARD_IMITATION_FAILURE
 
 def main_loop():
     # --- Initialization ---
-    vision = ScreenCapture()
-    asr = ASR()
+    env = TeeworldsEnv()
     tts = TTS()
-    controller = GameController()
-    # policy = RLAgentPolicy() # TODO: Initialize the actual RL policy
+    llm_parser = LLMCommandParser()
+    policy = RLAgentPolicy(env)
 
     print("Agent initialized. Starting main loop in 3 seconds...")
     time.sleep(3)
-    tts.speak("Agent online.")
+    tts.speak("Agent online. I am ready to learn.")
 
-    # --- Main Loop ---
+    # --- Main Online Learning Loop ---
+    obs, _ = env.reset()
     try:
         while True:
-            # 1. Perceive: Get game state and user command
-            current_frame = vision.get_frame()
-            # For MVP, we'll use a placeholder for voice input
-            # user_command = asr.transcribe_from_file("path/to/command.wav")
-            user_command_text = input("Enter command (e.g., jump, left, right): ")
+            # 1. Perceive: Get user command
+            user_command_text = input("Enter command (or 'quit'): ")
+            if user_command_text.lower() == 'quit':
+                break
 
-            # 2. Think: LLM parsing and Policy decision
-            # TODO: Add LLM call here to interpret user_command_text
-            # TODO: Get action from the RL policy based on frame and command
-            action_to_perform = user_command_text # Simple passthrough for now
+            # 2. Think: Parse command and get RL agent's prediction
+            parsed_action_str = llm_parser.parse_command(user_command_text)
+            predicted_action_idx = policy.predict(obs)
+            predicted_action_str = ACTIONS[predicted_action_idx]
 
-            # 3. Act: Perform the action in the game
-            controller.perform_action(action_to_perform)
-            tts.speak(f"Performing action: {action_to_perform}")
+            # 3. Act: The RL agent performs its chosen action
+            obs, _, _, _, _ = env.step(predicted_action_idx)
+            
+            # 4. Reward & Learn: Reward the agent for imitating the parsed command
+            # This is the first step towards learning when to trust the user.
+            if predicted_action_str == parsed_action_str:
+                reward = REWARD_IMITATION_SUCCESS
+                feedback = f"I chose to {predicted_action_str}, as you suggested."
+            else:
+                reward = REWARD_IMITATION_FAILURE
+                feedback = f"You suggested {parsed_action_str}, but I chose to {predicted_action_str}."
+            
+            print(f"Reward: {reward}")
+            tts.speak(feedback)
 
-            # Prevent overwhelming the CPU
-            time.sleep(0.5)
+            # Update the policy's replay buffer and learn from the experience
+            # This is a simplified online learning step.
+            policy.model.replay_buffer.add(
+                obs=np.array([obs]),
+                action=np.array([predicted_action_idx]),
+                reward=np.array([reward]),
+                next_obs=np.array([obs]), # In this simple setup, next_obs is the same
+                done=np.array([False]),
+                infos=[{}]
+            )
+            # Train for a small number of steps
+            policy.learn(total_timesteps=128)
 
     except KeyboardInterrupt:
-        print("Agent shutting down.")
+        print("\nTraining interrupted. Saving model...")
+    finally:
+        policy.model.save(policy.model_path)
+        print(f"Model saved to {policy.model_path}")
         tts.speak("Agent offline.")
-        vision.close()
+        env.close()
 
 if __name__ == "__main__":
     main_loop()
