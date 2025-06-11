@@ -29,7 +29,7 @@ def run_training():
 
     register_env("SnakeEnv-v1", env_creator)
 
-    num_workers = 4
+    num_workers = 0
     print(f"Using {num_workers} parallel workers for data collection (optimized for M1 Air).")
 
     # --- THE CANONICAL FIX: Adopt the Modern RLlib API Stack ---
@@ -66,13 +66,13 @@ def run_training():
             # accepted by .training() in all Ray versions. They will be set directly below.
             entropy_coeff=0.01,
         )
-        .evaluation(
-            evaluation_interval=10,
-            evaluation_num_env_runners=1,
-            evaluation_config=PPOConfig.overrides(
-                env_config={"render_mode": "human"}
-            ),
-        )
+        # .evaluation(
+        #     evaluation_interval=10,
+        #     evaluation_num_env_runners=1,
+        #     evaluation_config=PPOConfig.overrides(
+        #         env_config={"render_mode": "human"}
+        #     ),
+        # )
     )
 
     # Set PPO-specific training parameters directly on the config object.
@@ -82,7 +82,7 @@ def run_training():
 
     
     # Use .build_algo() as .build() is deprecated
-    algo = config.build_algo()
+    algo = config.build()
     
     # Checkpoints will be saved in a subdirectory, e.g., .../rllib_snake_model_checkpoints/checkpoint
     checkpoint_save_restore_path = os.path.join(main_model_artifacts_path, "checkpoint")

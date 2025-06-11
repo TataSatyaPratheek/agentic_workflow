@@ -75,12 +75,14 @@ class SnakeGame:
 
         # 1. Check for termination (death by collision)
         if self.is_collision():
+            print(f"\n>>> DEBUG: TERMINATED at frame {self.frame_iteration} <<<")
             terminated = True
             reward = REWARD_DEATH
             return reward, terminated, truncated, self.score
 
         # 2. Check for truncation (time limit)
         if self.frame_iteration > 100 * len(self.snake):
+            print(f"\n>>> DEBUG: TRUNCATED at frame {self.frame_iteration} <<<")
             truncated = True
             # No penalty for truncation, it's not the agent's fault
             return reward, terminated, truncated, self.score

@@ -4,8 +4,8 @@ from gymnasium import spaces
 import numpy as np
 import pygame
 
-from src.game.snake_game import SnakeGame, Point, BLOCK_SIZE
-from src.config import OBS_SPACE_SIZE
+from src.game.snake_game import SnakeGame, Point, BLOCK_SIZE # Point and BLOCK_SIZE are used in _get_obs
+from src.config import OBS_SPACE_SIZE, GAME_WIDTH, GAME_HEIGHT
 
 class SnakeEnv(gym.Env):
     """
@@ -20,20 +20,18 @@ class SnakeEnv(gym.Env):
 
     def __init__(self, config: dict = None):
         super().__init__()
-        # Config is passed by RLlib runners. Default to render_mode=None.
+
         config = config or {}
         self.render_mode = config.get("render_mode")
         
-        self.game = SnakeGame()
+        self.game = SnakeGame(w=GAME_WIDTH, h=GAME_HEIGHT)
+        
         self.action_space = spaces.Discrete(3)  # 0: straight, 1: right, 2: left
         
-        # The observation space is now purely about the game state.
         self.observation_space = spaces.Box(
             low=0, high=1, shape=(OBS_SPACE_SIZE,), dtype=np.float32
         )
 
-        # Only initialize Pygame if we are in human-render mode.
-        # This prevents headless workers from loading graphics.
         if self.render_mode == 'human':
             self.game._init_pygame()
 
@@ -78,13 +76,11 @@ class SnakeEnv(gym.Env):
         action_one_hot = [0] * 3
         action_one_hot[action] = 1
         
-        # Use the new, correct return values from the game engine
         reward, terminated, truncated, score = self.game.play_step(action_one_hot)
         obs = self._get_obs()
 
         self.render()
         
-        # Pass terminated and truncated directly to RLlib
         return obs, reward, terminated, truncated, {"score": score}
 
 
@@ -93,16 +89,8 @@ class SnakeEnv(gym.Env):
         self.game.reset()
         obs = self._get_obs()
 
-        # We now call render here, similar to step().
-        # self.game._update_ui() handles headless mode gracefully.
         self.render()
         return obs, {"score": 0}
 
     def render(self):
-        # This single call now handles rendering safely.
-        # self.game._update_ui() checks if Pygame components (like self.game.display)
-        # are initialized and does nothing if they aren't.
         self.game._update_ui()
-
-    # The close() method remains unchanged as it correctly handles Pygame quitting
-    # only when in 'human' render mode.
