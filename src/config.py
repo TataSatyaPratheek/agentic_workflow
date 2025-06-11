@@ -1,19 +1,21 @@
 # src/config.py
 
-# Model Configurations (using small, fast models)
-ASR_MODEL = "tiny.en"  # Model for faster-whisper
-LLM_TOKENIZER = "TinyLlama/TinyLlama-1.1B-Chat-v1.0" # A small model that uses tokenizers
-LLM_CLASSIFIER = "distilbert-base-uncased-finetuned-sst-2-english" # A very small text classifier for intent
-VLM_MODEL = None  # Placeholder for a small vision model
+# --- Snake Game Settings ---
+GAME_WINDOW_TITLE = "Snake RL"
+# Actions: 0 = Straight, 1 = Right Turn, 2 = Left Turn
+ACTIONS = ["straight", "right", "left"]
+# Observation space size (11 for game state + 3 for voice command)
+OBS_SPACE_SIZE = 14
 
-# Game Control Settings
-GAME_WINDOW_TITLE = "Teeworlds" # The exact window title of the game
-KEY_PRESS_DURATION = 0.1 # How long to press a key
+# --- RL & Reward Settings ---
+MODEL_PATH = "snake_ppo_agent.zip"
+REWARD_FOOD = 20.0       # Large reward for eating food
+REWARD_DEATH = -20.0     # Large penalty for dying
+REWARD_CLOSER = 0.1      # Small reward for moving closer to food
+REWARD_FARTHER = -0.2    # Small penalty for moving farther away
+DISTRACTION_PENALTY = -1.0 # Penalty for obeying a distracting command
 
-# RL Settings
-# Define the discrete actions the agent can take
-ACTIONS = ["left", "right", "jump", "shoot", "idle"]
-REWARD_IMITATION_SUCCESS = 1.0
-REWARD_IMITATION_FAILURE = -1.0
-# Observation shape for the RL model (small and grayscale)
-OBS_SHAPE = (84, 84)
+# --- AI Model Settings ---
+ASR_MODEL = "tiny.en"
+# This is a lightweight, working classifier for our task.
+LLM_CLASSIFIER = "Recognai/zeroshot_selectra_small"
