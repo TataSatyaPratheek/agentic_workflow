@@ -1,6 +1,7 @@
 # src/agent/llm_parser.py
 import torch
 from transformers import pipeline
+from src.config import LLM_CLASSIFIER, AGENT_ACTIONS # Import your specified small model and actions
 
 class LLMCommandParser:
     """Uses a zero-shot classification model to parse natural language commands."""
@@ -20,10 +21,10 @@ class LLMCommandParser:
         # The model will be automatically moved to the GPU.
         self.classifier = pipeline(
             "zero-shot-classification",
-            model="facebook/bart-large-mnli",
+            model=LLM_CLASSIFIER, # <-- USE THE SMALLER, FASTER MODEL
             device=self.device
         )
-        self.candidate_labels = ['up', 'down', 'left', 'right']
+        self.candidate_labels = AGENT_ACTIONS # Use actions from config
         print("LLM Command Parser initialized.")
 
     def parse_command(self, command: str) -> str:

@@ -4,3 +4,4 @@ uv.lock
 snake_tensorboard/
 dynamic_snake_ppo_agent.zip
 *.egg-info
+.python-version

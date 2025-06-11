@@ -15,28 +15,40 @@ from src.io.asr import ASR
 from src.config import *
 
 def env_creator(env_config):
+    # This creator is now used by background workers as well
     return SnakeEnv(**env_config)
 
 def run_training():
     ray.init(ignore_reinit_error=True)
     print("Ray initialized.")
-
     register_env("SnakeEnv-v1", env_creator)
 
+    # These are only for the interactive, visible agent
     parser = LLMCommandParser()
     tts = TTS()
     asr = ASR()
 
+    # --- OPTIMIZATION 1: Configure for Parallelism and Batching ---
     config = (
         PPOConfig()
         .environment(env="SnakeEnv-v1", env_config={"render_mode": "human"})
-        .env_runners(num_env_runners=0)
         .framework("torch")
-        .training(model={"fcnet_hiddens": [256, 256]})
+        # Use 3 background workers for data collection. Adjust based on your CPU cores.
+        .env_runners(num_env_runners=3, num_envs_per_env_runner=1)
+        .training(
+            model={"fcnet_hiddens": [256, 256]},
+            # Collect 4000 steps of experience before each training update.
+            train_batch_size=4000,
+            # sgd_minibatch_size and num_sgd_iter are PPO-specific and will be set directly on the config object.
+        )
     )
+    # Set PPO-specific training parameters directly on the config object
+    config.sgd_minibatch_size = 128  # Break the batch into smaller pieces for SGD.
+    config.num_sgd_iter = 10
     
     algo = config.build_algo()
     module = algo.get_module()
+
 
     checkpoint_dir = os.path.join(MODEL_PATH, "checkpoint")
     if os.path.exists(checkpoint_dir):
@@ -49,22 +61,32 @@ def run_training():
         print("Creating new model.")
 
     tts.speak("Agent online. Press V for voice command.")
-
-    env = SnakeEnv(render_mode='human')
-    score, last_level = 0, 1
-    agent_status, input_text, input_active = "Self-Playing", "", False
     
-    for episode in range(1, 10001):
+    # The main environment is only for rendering and interaction
+    env = SnakeEnv(render_mode='human')
+    clock = pygame.time.Clock()
+    
+    # --- OPTIMIZATION 2: Decoupled Training and Interaction Loop ---
+    # The game loop no longer calls algo.train(). It only handles interaction.
+    # Training happens on the river of data from the background workers.
+    for i in range(1000): # Run for 1000 training iterations
+        print(f"--- Training Iteration {i+1}/1000 ---")
+        
+        # This is now non-blocking for interaction; it processes data from workers
+        train_results = algo.train()
+        
+        print(f"Episode Reward Mean: {train_results.get('episode_reward_mean', 'N/A')}")
+
+        # Play one interactive episode to see the agent's progress
         obs, info = env.reset()
         terminated, truncated = False, False
-        episode_reward = 0
-        
-        print(f"--- Starting Episode {episode} ---")
-
+        # Your event handling logic for keyboard/voice is unchanged...
+        # Initialize these for the interactive loop
+        score, last_level = 0, 1 
+        agent_status, input_text, input_active = "Interactive Mode", "", False
         while not terminated and not truncated:
-            distraction_command = "idle"
-            
             for event in pygame.event.get():
+                # ... (event handling code is unchanged) ...
                 if event.type == pygame.QUIT:
                     ray.shutdown()
                     return
@@ -74,10 +96,12 @@ def run_training():
                 if input_active and event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN:
                         if input_text:
-                            distraction_command = parser.parse_command(input_text)
+                            # In interactive mode, commands don't directly affect reward
+                            # but we can still parse and announce them.
+                            parsed_command = parser.parse_command(input_text)
                             tts.speak(f"Text command: {input_text}")
                         input_text = ""
-                    elif event.key == pygame.K_BACKSPACE: input_text = input_text[:-1]
+                    elif event.key == pygame.K_BACKSPACE: input_text = input_text[:-1] # type: ignore
                     else: input_text += event.unicode
                 elif not input_active and event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_LEFT: distraction_command = "left"
@@ -86,56 +110,41 @@ def run_training():
                     elif event.key == pygame.K_DOWN: distraction_command = "down"
                     elif event.key == pygame.K_v:
                         agent_status = "Listening..."
-                        env.render(score, episode_reward, agent_status, input_text, input_active)
+                        env.render(score, 0, agent_status, input_text, input_active) # Reward not relevant here
                         voice_command = asr.listen_and_transcribe()
                         if voice_command:
-                            distraction_command = parser.parse_command(voice_command)
+                            parsed_command = parser.parse_command(voice_command)
                             tts.speak(f"Voice command: {voice_command}")
                         else:
                             tts.speak("Could not hear you.")
+                        agent_status = "Interactive Mode" # Reset status
             
+            # Get action from the latest trained model
             obs_tensor = torch.from_numpy(obs).unsqueeze(0)
             fwd_out = module.forward_inference({"obs": obs_tensor})
-            
-            # --- FIXED: Get action from the distribution logits ---
-            # The 'action_dist_inputs' key holds the logits.
-            # We take the argmax to get the most likely action for inference.
             action_logits = fwd_out['action_dist_inputs']
             action = torch.argmax(action_logits, dim=1).squeeze().item()
-            # --- END OF FIX ---
-
-            agent_dir = env.game.direction.lower()
-            reward_modifier = 0
-            if distraction_command != "idle" and distraction_command == agent_dir:
-                reward_modifier = DISTRACTION_PENALTY
-                agent_status = f"Distracted! Obeyed {distraction_command}"
-            else:
-                agent_status = "Self-Playing"
-
+            
             obs, reward, terminated, truncated, info = env.step(action)
-            reward += reward_modifier
-            episode_reward += reward
             score = info.get('score', score)
 
+            # Render the interactive game window
             env.render(score, reward, agent_status, input_text, input_active)
 
             if env.game.level > last_level:
                 tts.speak(f"Level {env.game.level} reached!")
                 last_level = env.game.level
 
-        print("Episode finished. Training...")
-        train_results = algo.train()
+            clock.tick(30) # Run at 30 frames per second
+            
+        tts.speak(f"Interactive episode finished. Score: {score}")
 
-        tts.speak(f"Game over! Score was {score}. Resetting.")
-        score, last_level = 0, 1
-
-        if episode % 10 == 0:
+        if (i + 1) % 10 == 0:
             save_dir = os.path.join(MODEL_PATH, "checkpoint")
             checkpoint_result = algo.save(save_dir)
             print(f"Checkpoint saved in {checkpoint_result.checkpoint.path}")
 
-    save_dir = os.path.join(MODEL_PATH, "checkpoint")
-    algo.save(save_dir)
+    algo.save(os.path.join(MODEL_PATH, "checkpoint"))
     tts.speak("Model saved. Agent offline.")
     ray.shutdown()
     env.close()

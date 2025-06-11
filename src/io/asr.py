@@ -30,7 +30,7 @@ class ASR:
         # and decoding the final text.
         self.pipeline = pipeline(
             "automatic-speech-recognition",
-            model="distil-whisper/distil-large-v2", # A robust and performant distilled model
+            model="distil-whisper/distil-small.en", # <-- USE THE SMALLER, FASTER MODEL
             torch_dtype=torch_dtype,
             device=device,
         )
