@@ -43,10 +43,16 @@ def main_loop():
                 break
 
             parsed_action_str = llm_parser.parse_command(user_command_text)
-            predicted_action_idx = policy.predict(obs)
+            
+            # --- REVISED LOGIC ---
+            # Predict using the current observation
+            current_obs_for_prediction = obs # obs here is the single observation from previous step/reset
+            predicted_action_idx = policy.predict(current_obs_for_prediction)[0] # Unpack action for single env
             predicted_action_str = ACTIONS[predicted_action_idx]
 
-            obs, _, _, _, _ = env.step(predicted_action_idx)
+            # Step the vectorized environment; obs, rewards, dones, infos are now lists/arrays
+            obs, rewards_from_env, dones_from_env, infos_from_env = policy.env.step([predicted_action_idx])
+            # --- END REVISED LOGIC ---
             
             if predicted_action_str == parsed_action_str:
                 reward = REWARD_IMITATION_SUCCESS
@@ -58,11 +64,18 @@ def main_loop():
             print(f"Reward: {reward}")
             tts.speak(feedback)
 
+            # The 'obs' variable is now the result from policy.env.step(), typically [next_observation_array]
+            # The 'reward' variable here is the imitation_reward.
+            # 'dones_from_env' and 'infos_from_env' are from the environment step.
             policy.model.replay_buffer.add(
-                obs=np.array([obs]), action=np.array([predicted_action_idx]),
-                reward=np.array([reward]), next_obs=np.array([obs]),
-                done=np.array([False]), infos=[{}]
+                obs=current_obs_for_prediction, # Observation before the step
+                action=np.array([predicted_action_idx]), # Action taken
+                reward=reward, # Imitation reward (scalar)
+                next_obs=obs[0], # New observation from policy.env.step()
+                done=dones_from_env[0], # Done flag from policy.env.step()
+                infos=[infos_from_env[0]] # Info dict from policy.env.step()
             )
+            obs = obs[0] # Update obs for the next iteration to be the single next observation
             policy.learn(total_timesteps=128)
 
     except KeyboardInterrupt:
@@ -75,4 +88,3 @@ def main_loop():
 
 if __name__ == "__main__":
     main_loop()
-
