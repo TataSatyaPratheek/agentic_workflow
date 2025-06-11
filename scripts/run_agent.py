@@ -47,7 +47,7 @@ def run_training():
         .env_runners(
             num_env_runners=num_workers,
             # This is a new required setting for the new API stack
-            rollout_fragment_length="auto"
+            rollout_fragment_length=64
         )
         # --- CORRECT MODEL CONFIGURATION FOR DEFAULT MODULE ---
         # Configure the model inside the .rl_module() method using DefaultModelConfig
@@ -77,7 +77,7 @@ def run_training():
 
     # Set PPO-specific training parameters directly on the config object.
     # This is a robust way if .training() doesn't accept them as kwargs in your Ray version.
-    config.sgd_minibatch_size = 128
+    config.sgd_minibatch_size = 64
     config.num_sgd_iter = 5
 
     
