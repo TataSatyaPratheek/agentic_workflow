@@ -28,10 +28,7 @@ class SnakeGame:
         self.reset()
 
     def _init_pygame(self):
-        """
-        Lazily initializes all Pygame components. This is only ever called by
-        the SnakeEnv when render_mode is 'human'.
-        """
+        """Lazily initializes Pygame components."""
         if self.display is None:
             print("Initializing Pygame for rendering...")
             pygame.init()
@@ -41,19 +38,25 @@ class SnakeGame:
             self.clock = pygame.time.Clock()
 
     def reset(self):
+        """Resets the game to a valid initial state without recursion."""
         self.level = 1
         self.speed = BASE_SPEED
         self.direction = "RIGHT"
-        self.head = Point(self.w / 2, self.h / 2)
-        self.snake = [self.head, Point(self.head.x - BLOCK_SIZE, self.head.y)]
         self.score = 0
-        self.food_list = []
-        self._generate_maze()
-        for _ in range(NUM_FOOD_ITEMS):
-            self._place_food()
-        if self.is_collision(): # Ensure initial state is valid
-            self.reset()
         self.frame_iteration = 0
+
+        # Loop until a safe starting position is found
+        while True:
+            self.head = Point(self.w / 2, self.h / 2)
+            self.snake = [self.head, Point(self.head.x - BLOCK_SIZE, self.head.y)]
+            self.food_list = []
+            self._generate_maze()
+            for _ in range(NUM_FOOD_ITEMS):
+                self._place_food()
+            
+            # If the initial state is NOT a collision, break the loop.
+            if not self.is_collision():
+                break
     
     def play_step(self, action: list) -> tuple[int, bool, bool, int]:
         """

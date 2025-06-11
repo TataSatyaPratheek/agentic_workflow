@@ -24,8 +24,10 @@ class SnakeEnv(gym.Env):
         config = config or {}
         self.render_mode = config.get("render_mode")
         
-        self.game = SnakeGame(w=GAME_WIDTH, h=GAME_HEIGHT)
-        
+        # --- THE FIX: Create the game *after* super().__init__() ---
+        # Now self.np_random exists (initialized by the Env base class property)
+        # and can be passed to the game engine.
+        self.game = SnakeGame(w=GAME_WIDTH, h=GAME_HEIGHT, np_random=self.np_random)
         self.action_space = spaces.Discrete(3)  # 0: straight, 1: right, 2: left
         
         self.observation_space = spaces.Box(
